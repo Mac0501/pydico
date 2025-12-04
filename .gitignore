@@ -1,0 +1,16 @@
+#Folders
+__pycache__/
+resources/
+.venv/
+.pytest_cache/
+.uv_cache/
+libs/client*
+
+# env
+.env
+
+# other
+requirements.txt
+requirements-dev.txt
+requirements-prod.txt
+*.mo

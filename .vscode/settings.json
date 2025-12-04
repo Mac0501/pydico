@@ -1,0 +1,20 @@
+{
+    "python.languageServer": "Pylance",
+    "files.exclude": {
+        "**/.uv_cache": true,
+        ".venv": true,
+        ".pytest_cache":true,
+        "**/__pycache__":true
+    },
+    "python.defaultInterpreterPath": ".venv\\Scripts\\python.exe",
+    "python.analysis.diagnosticMode": "workspace",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnType": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "isort.args": ["--profile", "black"]
+}

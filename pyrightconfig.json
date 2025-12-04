@@ -1,0 +1,53 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "strict",
+  "skipLibCheck": true,
+  "reportMissingImports": true,
+  "reportUnusedImport": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+
+  "executionEnvironments": [
+    {
+      "root": "./apps/bot/src",
+      "extraPaths": [
+        "./apps/bot/src",
+      ]
+    },
+    {
+      "root": "./apps/backend/src",
+      "extraPaths": [
+        "./apps/backend/src",
+      ]
+    },
+    {
+      "root": "./libs/ether-engine/src/ether_engine",
+      "extraPaths": [
+        "./libs/ether-engine/src/ether_engine",
+      ]
+    },
+    {
+      "root": "./libs/ether-application/src/ether_application",
+      "extraPaths": [
+        "./libs/ether-application/src/ether_application",
+      ]
+    },
+    {
+      "root": "./libs/ether-db/src/ether_db",
+      "extraPaths": [
+        "./libs/ether-db/src/ether_db",
+      ]
+    },
+    {
+      "root": "./libs/shared-types/src/shared_types",
+      "extraPaths": [
+        "./libs/shared-types/src/shared_types",
+      ]
+    }
+  ],
+
+  "exclude": ["**/__pycache__", "**/.venv", "**/.uv_cache", "./libs/clients"]
+}
