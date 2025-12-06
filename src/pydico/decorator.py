@@ -9,11 +9,11 @@ from .core.depends import Depends
 P = ParamSpec("P")
 R = TypeVar("R")
 
-Interface: TypeAlias = type[ABC]  # Typically an Abstract Base Class (ABC)
+Interface: TypeAlias = type[ABC]
 Dependency: TypeAlias = type[Any]
 
 if TYPE_CHECKING:
-    DependsT = Depends[str | Interface | Dependency]
+    DependsT = Depends[type[Any]]
 else:
     DependsT = Depends
 
@@ -38,7 +38,10 @@ def inject(func: Callable[P, R]) -> Callable[P, R]:
             default = param.default
 
             if isinstance(default, DependsT):
-                key_or_provider = default.key
+                if default.key != None:
+                    key_or_provider = default.key
+                else:
+                    key_or_provider = default.t
 
                 instance = Container.get(key_or_provider)
 

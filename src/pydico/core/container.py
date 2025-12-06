@@ -4,36 +4,37 @@ import inspect
 from abc import ABC
 from typing import Any, TypeAlias, TypeVar, get_type_hints
 
-# --- Type Aliases (Based on previous context and DI needs) ---
-Interface: TypeAlias = type[ABC]  # Typically an Abstract Base Class (ABC)
-Dependency: TypeAlias = type[Any]  # The concrete class implementing the interface
+from pydico.exceptions import (
+    AbstractDependencyError,
+    CircularDependencyError,
+    ContainerError,
+    ImplementationMismatchError,
+    InstanceTypeError,
+    InstantiationError,
+    MissingTypeHintError,
+    UnregisteredDependencyError,
+)
+
+Interface: TypeAlias = type[ABC]
+Dependency: TypeAlias = type[object]
 T = TypeVar("T")
 
 
 class Container:
-    """
-    A simplified, class-based Dependency Injection Container
-    inspired by the .NET IServiceCollection/IServiceProvider patterns.
-    """
-
     _transients: dict[Interface, Dependency] = {}
     _singletons: dict[Interface | Dependency, Dependency] = {}
-    _singleton_instances: dict[Interface | Dependency, Any] = {}
+    _singleton_instances: dict[Interface | Dependency, object] = {}
 
     _keyed_transients: dict[str, Dependency] = {}
     _keyed_singletons: dict[str, Dependency] = {}
-    _keyed_singleton_instances: dict[str, Any] = {}
+    _keyed_singleton_instances: dict[str, object] = {}
 
     @classmethod
     def _validate_registration(cls, i: Interface, d: Dependency) -> None:
-        if not issubclass(d, i):
-            raise TypeError(
-                f"Implementation {d.__name__} must be a subclass of interface {i.__name__}."
-            )
         if inspect.isabstract(d):
-            raise TypeError(
-                f"Cannot register abstract class {d.__name__} as a concrete dependency."
-            )
+            raise AbstractDependencyError(i, d)
+        if not issubclass(d, i):
+            raise ImplementationMismatchError(i, d)
 
     @classmethod
     def add_transient(cls, i: Interface, d: Dependency) -> None:
@@ -43,10 +44,14 @@ class Container:
     @classmethod
     def add_singleton_self(cls, d: Dependency) -> None:
         if inspect.isabstract(d):
-            raise TypeError(
-                f"Cannot register abstract class {d.__name__} for self-registration."
-            )
+            raise AbstractDependencyError(d, d)
         cls._singletons[d] = d
+
+    @classmethod
+    def add_singleton_instance(cls, i: Interface | Dependency, o: object) -> None:
+        if not isinstance(o, i):
+            InstanceTypeError(i, o)
+        cls._singleton_instances[i] = o
 
     @classmethod
     def add_singleton(cls, i: Interface, d: Dependency) -> None:
@@ -88,26 +93,22 @@ class Container:
                     continue
 
                 if param.annotation is inspect.Parameter.empty:
-                    raise ValueError(
-                        f"Parameter '{name}' in {implementation.__name__}'s constructor requires a type hint "
-                        f"to be resolved by the container."
-                    )
+                    raise MissingTypeHintError(implementation, name)
 
                 dependency_interface = resolved_hints[name]
                 dependencies[name] = cls.get(dependency_interface)
 
             return dependencies
 
-        except ValueError as ve:
-            raise ve
+        except ContainerError:
+            raise
         except RecursionError:
-            raise RecursionError(
-                f"Circular dependency detected while resolving {implementation.__name__}"
+            raise CircularDependencyError(
+                implementation,
+                "Unbekannt",
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to resolve dependencies for {implementation.__name__}: {e}"
-            )
+            raise InstantiationError(implementation, e)
 
     @classmethod
     def _get_service_by_key(cls, key: str) -> object:
@@ -121,7 +122,7 @@ class Container:
             implementation = cls._keyed_transients[key]
             is_singleton = False
         else:
-            raise LookupError(f"No keyed service registered for key: '{key}'")
+            raise UnregisteredDependencyError(object, key, object)
 
         kwargs = cls._resolve_dependencies(implementation)
 
@@ -144,7 +145,7 @@ class Container:
             implementation = cls._transients[i]
             is_singleton = False
         else:
-            raise LookupError(f"No service registered for interface: {i.__name__}")
+            raise UnregisteredDependencyError(object, i.__name__, i)
 
         kwargs = cls._resolve_dependencies(implementation)
 
@@ -186,3 +187,13 @@ class Container:
                 return cls._get_service_by_interface(i=key)
             else:
                 return cls._get_service_by_dependency(d=key)
+
+    @classmethod
+    def clean(cls) -> None:
+        cls._transients.clear()
+        cls._singletons.clear()
+        cls._singleton_instances.clear()
+
+        cls._keyed_transients.clear()
+        cls._keyed_singletons.clear()
+        cls._keyed_singleton_instances.clear()
