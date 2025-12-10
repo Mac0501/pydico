@@ -24,61 +24,89 @@ class KeyedProcessor:
         return "Processed Keyed"
 
 
-class AbstractTest(ABC):
-    @abstractmethod
-    def required_method(self) -> None:
-        pass
-
-
 @pytest.fixture(autouse=True, scope="module")
 def clean_container_storage():
     Container.add_singleton(ILogger, ConsoleLogger)
-    Container.add_keyed_transient("test", KeyedProcessor)
+    Container.add_transient("test", KeyedProcessor)
 
 
-def test_01_inject_resolves_dependency_correctly():
+def test_inject_decorator_01():
 
     @inject
-    def process_data(
-        data: str,
-        logger: ILogger = Depends[ILogger],
-    ):
+    def process_data(logger: ILogger = Depends[ILogger]):
         assert isinstance(logger, ConsoleLogger)
-        return data
+        return
 
-    process_data("Report 42")
+    process_data()
 
 
-def test_02_inject_uses_explicitly_passed_argument():
+def test_inject_decorator_02():
+
+    @inject
+    def process_data(logger: ConsoleLogger = Depends[ConsoleLogger]):
+        assert isinstance(logger, ConsoleLogger)
+        return
+
+    process_data()
+
+
+def test_inject_decorator_03():
+
+    @inject
+    def process_data(keyed_processor: KeyedProcessor = Depends[KeyedProcessor, "test"]):
+        assert isinstance(keyed_processor, KeyedProcessor)
+        return
+
+    process_data()
+
+
+def test_inject_decorator_04():
+
+    text = "Report 42"
+
+    @inject
+    def process_data(data: str, logger: ILogger = Depends[ILogger]):
+        assert isinstance(logger, ConsoleLogger)
+        assert text == data
+        return
+
+    process_data(text)
+
+
+def test_inject_decorator_05():
+
+    text = "Report 42"
+    number = 10
+
+    @inject
+    def process_data(data: str, logger: ILogger = Depends[ILogger], num: int = 1):
+        assert isinstance(logger, ConsoleLogger)
+        assert num == number
+        assert text == data
+        return
+
+    process_data(text, num=number)
+
+
+def test_inject_decorator_06():
 
     mock_logger = MagicMock(spec=ILogger)
     mock_logger.log.return_value = "Mock Log"
 
+    number1 = 10
+    number2 = 20
+
     @inject
-    def calculate(a: int, logger: ILogger = Depends[ILogger], b: int = 10) -> str:
+    def calculate(a: int, logger: ILogger = Depends[ILogger], b: int = number2):
         assert logger is mock_logger
-        return f"{a}"
+        assert a is number1
+        assert b is number2
+        return
 
-    calculate(a=5, logger=mock_logger)
-
-
-def test_03_inject_with_mixed_dependencies_and_regular_args():
-
-    @inject
-    def send_notification(
-        message: str,
-        target: str,
-        logger: ILogger = Depends[ILogger],
-        priority: str = "low",
-    ) -> str:
-        assert isinstance(logger, ConsoleLogger)
-        log_msg = logger.log(f"Sending to {target} with {priority} priority.")
-        return f"{log_msg} Body: {message}"
-
-    send_notification("Update required", "user@example.com", priority="high")
+    calculate(a=number1, logger=mock_logger)
 
 
-def test_04_inject_handles_dependencies_in_class_init():
+def test_inject_decorator_07():
 
     class MyHandler:
 
@@ -90,12 +118,16 @@ def test_04_inject_handles_dependencies_in_class_init():
     assert isinstance(handler.logger, ILogger)
 
 
-def test_05_inject_avoids_unnecessary_calls():
+def test_inject_decorator_08():
+    number = 10
 
-    @inject
-    def func_to_test(
-        a: int, keyed_processor: KeyedProcessor = Depends[KeyedProcessor, "test"]
-    ):
-        assert isinstance(keyed_processor, KeyedProcessor)
+    class MyHandler:
 
-    func_to_test(10)
+        @inject
+        def __init__(self, num: int, logger: ILogger = Depends[ILogger]) -> None:
+            self.num = num
+            self.logger = logger
+
+    handler = MyHandler(number)
+    assert isinstance(handler.logger, ILogger)
+    assert handler.num == number

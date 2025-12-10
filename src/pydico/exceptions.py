@@ -1,103 +1,112 @@
+from pydico.types import Key
+
+
 class ContainerError(Exception):
     pass
 
 
 class RegistrationError(ContainerError):
-    def __init__(self, interface_type: type, dependency_type: type, message: str):
-        self.interface_type = interface_type
-        self.dependency_type = dependency_type
+    def __init__(self, message: str):
         super().__init__(message)
 
 
 class ImplementationMismatchError(RegistrationError):
+    interface_type: type
+    dependency_type: type
+
     def __init__(self, interface_type: type, dependency_type: type):
+        self.interface_type = interface_type
+        self.dependency_type = dependency_type
         message = (
             f"Implementation {dependency_type.__name__} must be a subclass "
             f"of interface {interface_type.__name__}."
         )
-        super().__init__(interface_type, dependency_type, message)
+        super().__init__(message)
 
 
 class AbstractDependencyError(RegistrationError):
-    def __init__(self, interface_type: type, dependency_type: type):
+    dependency_type: type
+
+    def __init__(self, dependency_type: type):
+        self.dependency_type = dependency_type
         message = (
             f"Cannot register abstract class {dependency_type.__name__} as a dependency. "
             f"An abstract class cannot be instantiated directly."
         )
-        super().__init__(interface_type, dependency_type, message)
+        super().__init__(message)
 
 
 class InstanceTypeError(RegistrationError):
+    interface_type: type
+    instance_object: object
+
     def __init__(self, interface_type: type, instance_object: object):
+        self.interface_type = interface_type
         self.instance_object = instance_object
-        dependency_type = type(instance_object)
+        dependency_type = type(self.instance_object)
 
         message = (
             f"Object {instance_object!r} is of type {dependency_type.__name__} "
             f"but is not an instance of the required type {interface_type.__name__}."
         )
-        super().__init__(interface_type, dependency_type, message)
+        super().__init__(message)
 
 
 class ResolutionError(ContainerError):
-    def __init__(
-        self,
-        requesting_type: type,
-        dependency_name: str | None = None,
-        message: str | None = None,
-    ):
-        self.requesting_type = requesting_type
-        self.dependency_name = dependency_name
-
-        if message is None:
-            message = (
-                f"Error resolving dependencies for class: {requesting_type.__name__}"
-            )
-            if dependency_name:
-                message += f" (affected parameter: '{dependency_name}')"
-
+    def __init__(self, message: str):
         super().__init__(message)
 
 
 class MissingTypeHintError(ResolutionError):
-    def __init__(self, requesting_type: type, dependency_name: str):
+    dependency_type: type
+    parameter_name: str
+
+    def __init__(self, dependency_type: type, parameter_name: str):
+        self.dependency_type = dependency_type
+        self.parameter_name = parameter_name
         message = (
-            f"Parameter '{dependency_name}' in {requesting_type.__name__}'s constructor "
+            f"Parameter '{parameter_name}' in {dependency_type.__name__}'s constructor "
             f"requires a type hint to be resolved by the container."
         )
-        super().__init__(requesting_type, dependency_name, message)
+        super().__init__(message)
 
 
 class CircularDependencyError(ResolutionError):
-    def __init__(self, requesting_type: type, dependency_name: str):
+    chain: list[type]
+
+    def __init__(self, chain: list[type]):
+        self.chain = chain
+
+        type_names = [f"{t.__module__}.{t.__qualname__}" for t in chain]
+
+        cycle = type_names
+        first = type_names[0]
+        if first in type_names[1:]:
+            idx = type_names[1:].index(first) + 1
+            cycle = type_names[: idx + 1]
+
+        chain_str = " -> ".join(cycle)
+
         message = (
-            f"Circular dependency detected while resolving '{dependency_name}' "
-            f"for class {requesting_type.__name__}. Check the dependency chain."
+            "Circular dependency detected while resolving dependencies:\n"
+            f"    {chain_str}\n"
+            "The classes above depend on each other in a cycle. "
+            "Check their __init__ signatures and dependency registrations."
         )
-        super().__init__(requesting_type, dependency_name, message)
+
+        super().__init__(message)
 
 
 class UnregisteredDependencyError(ResolutionError):
-    def __init__(
-        self, requesting_type: type, dependency_name: str, requested_type: type
-    ):
-        self.requested_type = requested_type
-        message = (
-            f"Unregistered dependency (Type: {requested_type.__name__}) "
-            f"requested by class {requesting_type.__name__} for parameter '{dependency_name}'."
-        )
-        super().__init__(requesting_type, dependency_name, message)
+    key: Key
 
+    def __init__(self, key: Key):
+        self.key = key
 
-class InstantiationError(ResolutionError):
-    def __init__(self, implementation_type: type, original_exception: Exception):
-        self.original_exception = original_exception
+        if isinstance(key, str):
+            key_repr = key
+        else:
+            key_repr = key.__name__
 
-        message = (
-            f"Failed to instantiate class {implementation_type.__name__}. "
-            f"The constructor raised an unexpected error: "
-            f"{original_exception.__class__.__name__}: {original_exception}"
-        )
-        # Note: InstantiationError reports the implementation_type as the 'requesting_type'
-        # in the ResolutionError base class, which is logical here.
-        super().__init__(implementation_type, None, message)
+        message = f"Unregistered dependency for key {key_repr}."
+        super().__init__(message)

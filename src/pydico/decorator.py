@@ -1,7 +1,6 @@
 import functools
 import inspect
-from abc import ABC
-from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar
 
 from .core.container import Container
 from .core.depends import Depends
@@ -9,8 +8,6 @@ from .core.depends import Depends
 P = ParamSpec("P")
 R = TypeVar("R")
 
-Interface: TypeAlias = type[ABC]
-Dependency: TypeAlias = type[Any]
 
 if TYPE_CHECKING:
     DependsT = Depends[type[Any]]

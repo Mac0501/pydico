@@ -2,77 +2,130 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC
-from typing import Any, TypeAlias, TypeVar, get_type_hints
+from typing import TypeVar, cast, get_type_hints, overload
 
 from pydico.exceptions import (
     AbstractDependencyError,
     CircularDependencyError,
-    ContainerError,
     ImplementationMismatchError,
     InstanceTypeError,
-    InstantiationError,
     MissingTypeHintError,
     UnregisteredDependencyError,
 )
+from pydico.types import Dependency, Interface, Key
 
-Interface: TypeAlias = type[ABC]
-Dependency: TypeAlias = type[object]
 T = TypeVar("T")
 
 
 class Container:
-    _transients: dict[Interface, Dependency] = {}
-    _singletons: dict[Interface | Dependency, Dependency] = {}
-    _singleton_instances: dict[Interface | Dependency, object] = {}
+    _transients: dict[str | Interface, Dependency] = {}
+    _singletons: dict[Key, Dependency] = {}
+    _singleton_instances: dict[Key, object] = {}
 
-    _keyed_transients: dict[str, Dependency] = {}
-    _keyed_singletons: dict[str, Dependency] = {}
-    _keyed_singleton_instances: dict[str, object] = {}
+    @overload
+    @classmethod
+    def add_transient(cls, key: str, d: Dependency) -> None: ...
+
+    @overload
+    @classmethod
+    def add_transient(cls, key: Interface, d: Dependency) -> None: ...
 
     @classmethod
-    def _validate_registration(cls, i: Interface, d: Dependency) -> None:
+    def add_transient(cls, key: str | Interface, d: Dependency) -> None:
+        cls._validate_registration(key, d)
+        cls._transients[key] = d
+
+    @overload
+    @classmethod
+    def add_singleton(cls, key: Dependency) -> None: ...
+
+    @overload
+    @classmethod
+    def add_singleton(cls, key: str, d: Dependency) -> None: ...
+
+    @overload
+    @classmethod
+    def add_singleton(cls, key: Interface, d: Dependency) -> None: ...
+
+    @classmethod
+    def add_singleton(cls, key: Key, d: Dependency | None = None) -> None:
+        cls._validate_registration(key, d)
+        if d:
+            cls._singletons[key] = d
+            return
+        if not isinstance(key, str) and not inspect.isabstract(key):
+            cls._singletons[key] = key
+            return
+
+    @classmethod
+    def add_singleton_instance(cls, key: Key, o: object) -> None:
+        if not isinstance(key, str) and not isinstance(o, key):
+            InstanceTypeError(key, o)
+        cls._singleton_instances[key] = o
+
+    @overload
+    @classmethod
+    def get(cls, key: type[T]) -> T: ...
+
+    @overload
+    @classmethod
+    def get(cls, key: str) -> object: ...
+
+    @overload
+    @classmethod
+    def get(cls, key: str, type: type[T]) -> T: ...
+
+    @classmethod
+    def get(cls, key: str | type[T], type: type[T] = object) -> T:
+        instance = cls._get(key)
+        return cast(T, instance)
+
+    @classmethod
+    def clean(cls) -> None:
+        cls._transients.clear()
+        cls._singletons.clear()
+        cls._singleton_instances.clear()
+
+    @classmethod
+    def _get(cls, key: Key) -> object:
+
+        instance = cls._get_singleton(key)
+        if instance:
+            return instance
+
+        instance = cls._get_transient(key)
+        if instance:
+            return instance
+
+        raise UnregisteredDependencyError(key)
+
+    @classmethod
+    def _validate_registration(cls, key: Key, d: Dependency | None) -> None:
+        if isinstance(key, str):
+            if d is None:
+                raise ValueError(
+                    f"A Dependency (the implementation class) cannot be None "
+                    f"when registering with a string key: '{key}'. "
+                    f"You must provide a concrete class."
+                )
+            return
+
+        if d is None:
+            d = key
         if inspect.isabstract(d):
-            raise AbstractDependencyError(i, d)
-        if not issubclass(d, i):
-            raise ImplementationMismatchError(i, d)
+            raise AbstractDependencyError(d)
+        if key == d:
+            return
+        if not issubclass(d, key):
+            raise ImplementationMismatchError(key, d)
 
     @classmethod
-    def add_transient(cls, i: Interface, d: Dependency) -> None:
-        cls._validate_registration(i, d)
-        cls._transients[i] = d
-
-    @classmethod
-    def add_singleton_self(cls, d: Dependency) -> None:
-        if inspect.isabstract(d):
-            raise AbstractDependencyError(d, d)
-        cls._singletons[d] = d
-
-    @classmethod
-    def add_singleton_instance(cls, i: Interface | Dependency, o: object) -> None:
-        if not isinstance(o, i):
-            InstanceTypeError(i, o)
-        cls._singleton_instances[i] = o
-
-    @classmethod
-    def add_singleton(cls, i: Interface, d: Dependency) -> None:
-        cls._validate_registration(i, d)
-        cls._singletons[i] = d
-
-    @classmethod
-    def add_keyed_transient(cls, key: str, d: Dependency) -> None:
-        cls._keyed_transients[key] = d
-
-    @classmethod
-    def add_keyed_singleton(cls, key: str, d: Dependency) -> None:
-        cls._keyed_singletons[key] = d
-
-    @classmethod
-    def _resolve_dependencies(cls, implementation: Dependency) -> dict[str, Any]:
+    def _resolve_dependencies(cls, implementation: Dependency) -> dict[str, object]:
         try:
             signature = inspect.signature(implementation.__init__)
 
             resolved_hints = get_type_hints(implementation.__init__)
-            dependencies: dict[str, Any] = {}
+            dependencies: dict[str, object] = {}
 
             for name, param in signature.parameters.items():
                 if param.kind in (
@@ -100,100 +153,51 @@ class Container:
 
             return dependencies
 
-        except ContainerError:
-            raise
         except RecursionError:
-            raise CircularDependencyError(
-                implementation,
-                "Unbekannt",
-            )
-        except Exception as e:
-            raise InstantiationError(implementation, e)
+            raise CircularDependencyError([implementation])
+        except CircularDependencyError as e:
+            raise CircularDependencyError([implementation, *e.chain])
 
     @classmethod
-    def _get_service_by_key(cls, key: str) -> object:
-        if key in cls._keyed_singleton_instances:
-            return cls._keyed_singleton_instances[key]
-
-        if key in cls._keyed_singletons:
-            implementation = cls._keyed_singletons[key]
-            is_singleton = True
-        elif key in cls._keyed_transients:
-            implementation = cls._keyed_transients[key]
-            is_singleton = False
-        else:
-            raise UnregisteredDependencyError(object, key, object)
-
-        kwargs = cls._resolve_dependencies(implementation)
-
-        instance = implementation(**kwargs)
-
-        if is_singleton:
-            cls._keyed_singleton_instances[key] = instance
-
+    def _get_instance(cls, d: Dependency) -> object:
+        kwargs = cls._resolve_dependencies(d)
+        instance: object = d(**kwargs)
         return instance
 
     @classmethod
-    def _get_service_by_interface(cls, i: Interface) -> object:
-        if i in cls._singleton_instances:
-            return cls._singleton_instances[i]
+    def _get_singleton(cls, key: Key) -> object | None:
+        if key in cls._singleton_instances:
+            return cls._singleton_instances[key]
 
-        if i in cls._singletons:
-            implementation = cls._singletons[i]
-            is_singleton = True
-        elif i in cls._transients:
-            implementation = cls._transients[i]
-            is_singleton = False
-        else:
-            raise UnregisteredDependencyError(object, i.__name__, i)
+        if key in cls._singletons:
+            implementation = cls._singletons[key]
+            instance = cls._get_instance(implementation)
+            cls.add_singleton_instance(key, instance)
+            return instance
 
-        kwargs = cls._resolve_dependencies(implementation)
+        if not isinstance(key, str) and not inspect.isabstract(key):
+            for _, v in cls._singleton_instances.items():
+                if type(v) is key:
+                    return v
 
-        instance = implementation(**kwargs)
+            for k, v in cls._singletons.items():
+                if v is key:
+                    instance: object = cls._get_instance(v)
+                    cls.add_singleton_instance(k, instance)
+                    return instance
 
-        if is_singleton:
-            cls._singleton_instances[i] = instance
-
-        return instance
-
-    @classmethod
-    def _get_service_by_dependency(cls, d: Dependency) -> object:
-        if d in cls._singleton_instances:
-            return cls._singleton_instances[d]
-
-        if d in cls._singletons:
-            implementation = cls._singletons[d]
-            is_singleton = True
-        else:
-            implementation = d
-            is_singleton = False
-
-        kwargs = cls._resolve_dependencies(implementation)
-
-        instance = implementation(**kwargs)
-
-        if is_singleton:
-            cls._singleton_instances[d] = instance
-
-        return instance
+        return None
 
     @classmethod
-    def get(cls, key: str | Interface | Dependency) -> object:
+    def _get_transient(cls, key: Key) -> object | None:
 
-        if isinstance(key, str):
-            return cls._get_service_by_key(key=key)
+        if isinstance(key, str) or (inspect.isabstract(key) and issubclass(key, ABC)):
+            if key in cls._transients:
+                implementation = cls._transients[key]
+                instance: object = cls._get_instance(implementation)
+                return instance
         else:
-            if issubclass(key, ABC):
-                return cls._get_service_by_interface(i=key)
-            else:
-                return cls._get_service_by_dependency(d=key)
+            instance: object = cls._get_instance(key)
+            return instance
 
-    @classmethod
-    def clean(cls) -> None:
-        cls._transients.clear()
-        cls._singletons.clear()
-        cls._singleton_instances.clear()
-
-        cls._keyed_transients.clear()
-        cls._keyed_singletons.clear()
-        cls._keyed_singleton_instances.clear()
+        return None

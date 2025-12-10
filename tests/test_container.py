@@ -71,56 +71,97 @@ def clean_container_storage():
     Container.clean()
 
 
-def test_registration_fails_on_abstract_dependency():
-    with pytest.raises(AbstractDependencyError):
-        Container.add_transient(ABC, AbstractTest)
-
-
-def test_registration_fails_on_non_subclass():
-    with pytest.raises(ImplementationMismatchError):
-        Container.add_transient(ILogger, ServiceA)
-
-
-def test_add_transient_and_resolve_new_instance_each_time():
+def test_add_transient_01():
     Container.add_transient(ILogger, ConsoleLogger)
 
     instance1 = Container.get(ILogger)
-    instance2 = Container.get(ILogger)
+    instance2 = Container.get(ConsoleLogger)
 
     assert isinstance(instance1, ConsoleLogger)
     assert isinstance(instance2, ConsoleLogger)
     assert instance1 is not instance2
 
 
-def test_add_singleton_self_fails_on_abstract():
+def test_add_transient_02():
+    Container.add_transient("logger", ConsoleLogger)
+
+    instance1 = Container.get("logger")
+    instance2 = Container.get("logger")
+
+    assert isinstance(instance1, ConsoleLogger)
+    assert isinstance(instance2, ConsoleLogger)
+    assert instance1 is not instance2
+
+
+def test_add_transient_fails_on_abstract_dependency():
     with pytest.raises(AbstractDependencyError):
-        Container.add_singleton_self(AbstractTest)
+        Container.add_transient(ABC, AbstractTest)
 
 
-def test_add_singleton_and_resolve_same_instance():
+def test_add_transient_fails_on_implementation_mismatch():
+    with pytest.raises(ImplementationMismatchError):
+        Container.add_transient(ILogger, ServiceA)
+
+
+def test_add_singleton_01():
     Container.add_singleton(ILogger, ConsoleLogger)
 
     instance1 = Container.get(ILogger)
-    instance2 = Container.get(ILogger)
+    instance2 = Container.get(ConsoleLogger)
 
     assert isinstance(instance1, ConsoleLogger)
     assert isinstance(instance2, ConsoleLogger)
     assert instance1 is instance2
 
 
-def test_add_singleton_self_and_resolve_same_instance():
-    Container.add_singleton_self(ServiceA)
+def test_add_singleton_02():
+    Container.add_singleton("logger", ConsoleLogger)
 
+    instance1 = Container.get("logger")
+    instance2 = Container.get(ConsoleLogger)
+
+    assert isinstance(instance1, ConsoleLogger)
+    assert isinstance(instance2, ConsoleLogger)
+    assert instance1 is instance2
+
+
+def test_add_singleton_03():
+    Container.add_singleton(ConsoleLogger)
+
+    instance1 = Container.get(ConsoleLogger)
+    instance2 = Container.get(ConsoleLogger)
+
+    assert isinstance(instance1, ConsoleLogger)
+    assert isinstance(instance2, ConsoleLogger)
+    assert instance1 is instance2
+
+
+def test_add_singleton_fails_on_abstract_dependency_01():
+    with pytest.raises(AbstractDependencyError):
+        Container.add_singleton(ABC, AbstractTest)
+
+
+def test_add_singleton_fails_on_abstract_dependency_02():
+    with pytest.raises(AbstractDependencyError):
+        Container.add_singleton(AbstractTest)
+
+
+def test_add_singleton_fails_on_implementation_mismatch():
+    with pytest.raises(ImplementationMismatchError):
+        Container.add_singleton(ILogger, ServiceA)
+
+
+def test_get_01():
     instance1 = Container.get(ServiceA)
     instance2 = Container.get(ServiceA)
 
     assert isinstance(instance1, ServiceA)
     assert isinstance(instance2, ServiceA)
-    assert instance1 is instance2
+    assert instance1 is not instance2
 
 
-def test_constructor_injection_with_singleton_self_dependency():
-    Container.add_singleton_self(ServiceA)
+def test_get_02():
+    Container.add_singleton(ServiceA)
 
     instance_b = Container.get(ServiceB)
 
@@ -128,54 +169,29 @@ def test_constructor_injection_with_singleton_self_dependency():
 
     instance_a_via_b = instance_b.service_a
     instance_a_direct = Container.get(ServiceA)
+
     assert isinstance(instance_a_direct, ServiceA)
     assert instance_a_via_b is instance_a_direct
 
 
-def test_unregistered_dependency_resolves_as_transient():
-    instance1 = Container.get(ServiceA)
-    instance2 = Container.get(ServiceA)
-
-    assert isinstance(instance1, ServiceA)
-    assert isinstance(instance2, ServiceA)
-    assert instance1 is not instance2
-
-
-def test_fails_on_missing_type_hint():
+def test_get_fails_on_missing_type_hint():
     with pytest.raises(MissingTypeHintError):
         Container.get(UnresolvedDep)
 
 
-def test_fails_on_circular_dependency():
-    Container.add_singleton_self(CircularDepA)
-    Container.add_singleton_self(CircularDepB)
+def test_get_fails_on_circular_dependency():
+    Container.add_singleton(CircularDepA)
+    Container.add_singleton(CircularDepB)
 
     with pytest.raises(CircularDependencyError):
         Container.get(CircularDepA)
 
 
-def test_add_keyed_transient_and_resolve_new_instance_each_time():
-    Container.add_keyed_transient("proc_t", KeyedProcessor)
-
-    instance1 = Container.get("proc_t")
-    instance2 = Container.get("proc_t")
-
-    assert isinstance(instance1, KeyedProcessor)
-    assert isinstance(instance2, KeyedProcessor)
-    assert instance1 is not instance2
-
-
-def test_add_keyed_singleton_and_resolve_same_instance():
-    Container.add_keyed_singleton("proc_s", KeyedProcessor)
-
-    instance1 = Container.get("proc_s")
-    instance2 = Container.get("proc_s")
-
-    assert isinstance(instance1, KeyedProcessor)
-    assert isinstance(instance2, KeyedProcessor)
-    assert instance1 is instance2
-
-
-def test_fails_on_unregistered_keyed_service():
+def test_get_fails_on_unregistered_dependency_01():
     with pytest.raises(UnregisteredDependencyError):
-        Container.get("non_existent_key")
+        Container.get(ILogger)
+
+
+def test_get_fails_on_unregistered_dependency_02():
+    with pytest.raises(UnregisteredDependencyError):
+        Container.get("logger")
