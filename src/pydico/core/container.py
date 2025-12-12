@@ -60,7 +60,7 @@ class Container:
     @classmethod
     def add_singleton_instance(cls, key: Key, o: object) -> None:
         if not isinstance(key, str) and not isinstance(o, key):
-            InstanceTypeError(key, o)
+            raise InstanceTypeError(key, o)
         cls._singleton_instances[key] = o
 
     @overload
@@ -90,11 +90,11 @@ class Container:
     def _get(cls, key: Key) -> object:
 
         instance = cls._get_singleton(key)
-        if instance:
+        if instance is not None:
             return instance
 
         instance = cls._get_transient(key)
-        if instance:
+        if instance is not None:
             return instance
 
         raise UnregisteredDependencyError(key)
