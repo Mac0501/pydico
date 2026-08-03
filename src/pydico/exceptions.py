@@ -57,41 +57,64 @@ class ResolutionError(ContainerError):
         super().__init__(message)
 
 
+class ScopeClosedError(ResolutionError):
+    def __init__(self):
+        super().__init__("Cannot resolve dependencies from a closed scope.")
+
+
+class ScopeRequiredError(ResolutionError):
+    key: Key
+
+    def __init__(self, key: Key):
+        self.key = key
+        key_repr = repr(key) if isinstance(key, str) else key.__name__
+        super().__init__(
+            f"Dependency {key_repr} has a scoped lifetime and must be resolved "
+            "from a scope created with Container.create_scope()."
+        )
+
+
 class MissingTypeHintError(ResolutionError):
-    dependency_type: type
+    target: object
     parameter_name: str
 
-    def __init__(self, dependency_type: type, parameter_name: str):
-        self.dependency_type = dependency_type
+    def __init__(self, target: object, parameter_name: str):
+        self.target = target
         self.parameter_name = parameter_name
+        target_name = getattr(target, "__qualname__", repr(target))
         message = (
-            f"Parameter '{parameter_name}' in {dependency_type.__name__}'s constructor "
-            f"requires a type hint to be resolved by the container."
+            f"Parameter '{parameter_name}' in {target_name} requires a type hint "
+            "to be resolved by the container."
         )
         super().__init__(message)
 
 
 class CircularDependencyError(ResolutionError):
-    chain: list[type]
+    chain: list[Key]
 
-    def __init__(self, chain: list[type]):
+    def __init__(self, chain: list[Key]):
         self.chain = chain
 
-        type_names = [f"{t.__module__}.{t.__qualname__}" for t in chain]
+        key_names = [
+            repr(key)
+            if isinstance(key, str)
+            else f"{key.__module__}.{key.__qualname__}"
+            for key in chain
+        ]
 
-        cycle = type_names
-        first = type_names[0]
-        if first in type_names[1:]:
-            idx = type_names[1:].index(first) + 1
-            cycle = type_names[: idx + 1]
+        cycle = key_names
+        first = key_names[0]
+        if first in key_names[1:]:
+            idx = key_names[1:].index(first) + 1
+            cycle = key_names[: idx + 1]
 
         chain_str = " -> ".join(cycle)
 
         message = (
             "Circular dependency detected while resolving dependencies:\n"
             f"    {chain_str}\n"
-            "The classes above depend on each other in a cycle. "
-            "Check their __init__ signatures and dependency registrations."
+            "The registrations above depend on each other in a cycle. "
+            "Check their factories, constructors, and dependency registrations."
         )
 
         super().__init__(message)

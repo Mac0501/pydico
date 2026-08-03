@@ -1,49 +1,48 @@
 import functools
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar
+from typing import Callable, ParamSpec, TypeVar, get_type_hints
 
-from .core.container import Container
-from .core.depends import Depends
+from pydico.exceptions import MissingTypeHintError
+from pydico.types import Resolver
+
+from .core.depends import DependencyMarker
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-if TYPE_CHECKING:
-    DependsT = Depends[type[Any]]
-else:
-    DependsT = Depends
+def inject(resolver: Resolver) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        signature = inspect.signature(func)
+        resolved_hints = get_type_hints(func)
+        dependencies: dict[str, str | type[object]] = {}
 
-
-def inject(func: Callable[P, R]) -> Callable[P, R]:
-    sig = inspect.signature(func)
-
-    @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        bound = sig.bind_partial(*args, **kwargs)
-
-        for name, param in sig.parameters.items():
-            if name in ("self", "cls"):
+        for name, parameter in signature.parameters.items():
+            marker = parameter.default
+            if not isinstance(marker, DependencyMarker):
                 continue
 
-            if (
-                name in bound.arguments
-                and bound.arguments[name] is not inspect.Parameter.empty
-            ):
+            if marker.key is not None:
+                dependencies[name] = marker.key
                 continue
 
-            default = param.default
+            if parameter.annotation is inspect.Parameter.empty:
+                raise MissingTypeHintError(func, name)
 
-            if isinstance(default, DependsT):
-                if default.key != None:
-                    key_or_provider = default.key
-                else:
-                    key_or_provider = default.t
+            dependencies[name] = resolved_hints[name]
 
-                instance = Container.get(key_or_provider)
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            bound = signature.bind_partial(*args, **kwargs)
 
-                bound.arguments[name] = instance
+            for name, dependency_key in dependencies.items():
+                if name in bound.arguments:
+                    continue
 
-        return func(*bound.args, **bound.kwargs)
+                bound.arguments[name] = resolver.resolve(dependency_key)
 
-    return wrapper
+            return func(*bound.args, **bound.kwargs)
+
+        return wrapper
+
+    return decorator

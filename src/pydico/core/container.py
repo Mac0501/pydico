@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from abc import ABC
-from typing import TypeVar, cast, get_type_hints, overload
+from typing import Callable, TypeGuard, TypeVar, get_type_hints, overload
 
 from pydico.exceptions import (
     AbstractDependencyError,
@@ -10,194 +9,333 @@ from pydico.exceptions import (
     ImplementationMismatchError,
     InstanceTypeError,
     MissingTypeHintError,
+    ScopeRequiredError,
     UnregisteredDependencyError,
 )
-from pydico.types import Dependency, Interface, Key
+from pydico.lifetime import Lifetime
+from pydico.scope import Scope
+from pydico.types import Dependency, Key, Resolver, ServiceFactory
+
+from .descriptor import ServiceDescriptor
 
 T = TypeVar("T")
 
 
+class _ResolutionContext:
+    def __init__(self, resolve_key: Callable[[Key], object]) -> None:
+        self._resolve_key = resolve_key
+
+    @overload
+    def resolve(self, key: type[T]) -> T: ...
+
+    @overload
+    def resolve(self, key: str) -> object: ...
+
+    def resolve(self, key: Key) -> object:
+        return self._resolve_key(key)
+
+
+class _ScopeState:
+    def __init__(self) -> None:
+        self._instances: dict[Key, tuple[ServiceDescriptor, object]] = {}
+
+    def get(self, descriptor: ServiceDescriptor) -> tuple[bool, object]:
+        cached = self._instances.get(descriptor.key)
+        if cached is None or cached[0] is not descriptor:
+            return False, None
+        return True, cached[1]
+
+    def set(self, descriptor: ServiceDescriptor, instance: object) -> None:
+        self._instances[descriptor.key] = (descriptor, instance)
+
+    def clear(self) -> None:
+        self._instances.clear()
+
+
 class Container:
-    _transients: dict[str | Interface, Dependency] = {}
-    _singletons: dict[Key, Dependency] = {}
-    _singleton_instances: dict[Key, object] = {}
+    def __init__(self) -> None:
+        self._registrations: dict[Key, ServiceDescriptor] = {}
 
     @overload
-    @classmethod
-    def add_transient(cls, key: str, d: Dependency) -> None: ...
+    def register_transient(self, key: Dependency) -> None: ...
 
     @overload
-    @classmethod
-    def add_transient(cls, key: Interface, d: Dependency) -> None: ...
+    def register_transient(self, key: Key, implementation: Dependency) -> None: ...
 
-    @classmethod
-    def add_transient(cls, key: str | Interface, d: Dependency) -> None:
-        cls._validate_registration(key, d)
-        cls._transients[key] = d
-
-    @overload
-    @classmethod
-    def add_singleton(cls, key: Dependency) -> None: ...
-
-    @overload
-    @classmethod
-    def add_singleton(cls, key: str, d: Dependency) -> None: ...
+    def register_transient(
+        self, key: Key, implementation: Dependency | None = None
+    ) -> None:
+        implementation = self._validate_registration(key, implementation)
+        self._registrations[key] = ServiceDescriptor(
+            key=key,
+            implementation=implementation,
+            lifetime=Lifetime.TRANSIENT,
+        )
 
     @overload
-    @classmethod
-    def add_singleton(cls, key: Interface, d: Dependency) -> None: ...
-
-    @classmethod
-    def add_singleton(cls, key: Key, d: Dependency | None = None) -> None:
-        cls._validate_registration(key, d)
-        if d:
-            cls._singletons[key] = d
-            return
-        if not isinstance(key, str) and not inspect.isabstract(key):
-            cls._singletons[key] = key
-            return
-
-    @classmethod
-    def add_singleton_instance(cls, key: Key, o: object) -> None:
-        if not isinstance(key, str) and not isinstance(o, key):
-            raise InstanceTypeError(key, o)
-        cls._singleton_instances[key] = o
+    def register_singleton(self, key: Dependency) -> None: ...
 
     @overload
-    @classmethod
-    def get(cls, key: type[T]) -> T: ...
+    def register_singleton(self, key: Key, implementation: Dependency) -> None: ...
+
+    def register_singleton(
+        self, key: Key, implementation: Dependency | None = None
+    ) -> None:
+        implementation = self._validate_registration(key, implementation)
+        self._registrations[key] = ServiceDescriptor(
+            key=key,
+            implementation=implementation,
+            lifetime=Lifetime.SINGLETON,
+        )
 
     @overload
-    @classmethod
-    def get(cls, key: str) -> object: ...
+    def register_scoped(self, key: Dependency) -> None: ...
 
     @overload
-    @classmethod
-    def get(cls, key: str, type: type[T]) -> T: ...
+    def register_scoped(self, key: Key, implementation: Dependency) -> None: ...
 
-    @classmethod
-    def get(cls, key: str | type[T], type: type[T] = object) -> T:
-        instance = cls._get(key)
-        return cast(T, instance)
+    def register_scoped(
+        self, key: Key, implementation: Dependency | None = None
+    ) -> None:
+        implementation = self._validate_registration(key, implementation)
+        self._registrations[key] = ServiceDescriptor(
+            key=key,
+            implementation=implementation,
+            lifetime=Lifetime.SCOPED,
+        )
 
-    @classmethod
-    def clean(cls) -> None:
-        cls._transients.clear()
-        cls._singletons.clear()
-        cls._singleton_instances.clear()
+    @overload
+    def register_instance(self, key: type[T], instance: T) -> None: ...
 
-    @classmethod
-    def _get(cls, key: Key) -> object:
+    @overload
+    def register_instance(self, key: str, instance: object) -> None: ...
 
-        instance = cls._get_singleton(key)
-        if instance is not None:
-            return instance
+    def register_instance(self, key: Key, instance: object) -> None:
+        if not isinstance(key, str) and not isinstance(instance, key):
+            raise InstanceTypeError(key, instance)
 
-        instance = cls._get_transient(key)
-        if instance is not None:
-            return instance
+        self._registrations[key] = ServiceDescriptor(
+            key=key,
+            implementation=type(instance),
+            lifetime=Lifetime.SINGLETON,
+            instance=instance,
+        )
+
+    @overload
+    def register_factory(
+        self,
+        key: type[T],
+        factory: Callable[[Resolver], T],
+        *,
+        lifetime: Lifetime = Lifetime.TRANSIENT,
+    ) -> None: ...
+
+    @overload
+    def register_factory(
+        self,
+        key: str,
+        factory: ServiceFactory,
+        *,
+        lifetime: Lifetime = Lifetime.TRANSIENT,
+    ) -> None: ...
+
+    def register_factory(
+        self,
+        key: Key,
+        factory: ServiceFactory,
+        *,
+        lifetime: Lifetime = Lifetime.TRANSIENT,
+    ) -> None:
+        self._registrations[key] = ServiceDescriptor(
+            key=key,
+            factory=factory,
+            lifetime=lifetime,
+        )
+
+    @overload
+    def resolve(self, key: type[T]) -> T: ...
+
+    @overload
+    def resolve(self, key: str) -> object: ...
+
+    def resolve(self, key: Key) -> object:
+        return self._resolve(key)
+
+    def create_scope(self) -> Scope:
+        state = _ScopeState()
+        return Scope(
+            resolve_key=lambda key: self._resolve(key, scope_state=state),
+            close_scope=state.clear,
+        )
+
+    def clear(self) -> None:
+        self._registrations.clear()
+
+    def _resolve(
+        self,
+        key: Key,
+        resolution_stack: tuple[Key, ...] = (),
+        scope_state: _ScopeState | None = None,
+    ) -> object:
+        if key in resolution_stack:
+            cycle_start = resolution_stack.index(key)
+            raise CircularDependencyError([*resolution_stack[cycle_start:], key])
+
+        resolution_stack = (*resolution_stack, key)
+        descriptor = self._registrations.get(key)
+        if descriptor is not None:
+            return self._resolve_descriptor(
+                descriptor,
+                resolution_stack,
+                scope_state,
+            )
+
+        if self._can_autowire(key):
+            return self._create_instance(key, resolution_stack, scope_state)
 
         raise UnregisteredDependencyError(key)
 
-    @classmethod
-    def _validate_registration(cls, key: Key, d: Dependency | None) -> None:
-        if isinstance(key, str):
-            if d is None:
-                raise ValueError(
-                    f"A Dependency (the implementation class) cannot be None "
-                    f"when registering with a string key: '{key}'. "
-                    f"You must provide a concrete class."
-                )
-            return
+    def _resolve_dependencies(
+        self,
+        implementation: Dependency,
+        resolution_stack: tuple[Key, ...],
+        scope_state: _ScopeState | None,
+    ) -> tuple[tuple[object, ...], dict[str, object]]:
+        signature = inspect.signature(implementation.__init__)
+        resolved_hints = get_type_hints(implementation.__init__)
+        positional_dependencies: list[object] = []
+        keyword_dependencies: dict[str, object] = {}
 
-        if d is None:
-            d = key
-        if inspect.isabstract(d):
-            raise AbstractDependencyError(d)
-        if key == d:
-            return
-        if not issubclass(d, key):
-            raise ImplementationMismatchError(key, d)
+        for name, parameter in signature.parameters.items():
+            if name == "self":
+                continue
 
-    @classmethod
-    def _resolve_dependencies(cls, implementation: Dependency) -> dict[str, object]:
-        try:
-            signature = inspect.signature(implementation.__init__)
+            if parameter.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
 
-            resolved_hints = get_type_hints(implementation.__init__)
-            dependencies: dict[str, object] = {}
+            if parameter.default is not inspect.Parameter.empty:
+                continue
 
-            for name, param in signature.parameters.items():
-                if param.kind in (
-                    inspect.Parameter.VAR_POSITIONAL,
-                    inspect.Parameter.VAR_KEYWORD,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                ):
-                    if name in ("self", "args", "kwargs"):
-                        continue
+            if parameter.annotation is inspect.Parameter.empty:
+                raise MissingTypeHintError(implementation, name)
 
-                if param.kind in (
-                    inspect.Parameter.VAR_POSITIONAL,
-                    inspect.Parameter.VAR_KEYWORD,
-                ):
-                    continue
+            dependency_key = resolved_hints[name]
+            dependency = self._resolve(
+                dependency_key,
+                resolution_stack,
+                scope_state,
+            )
+            if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
+                positional_dependencies.append(dependency)
+            else:
+                keyword_dependencies[name] = dependency
 
-                if name == "self":
-                    continue
+        return tuple(positional_dependencies), keyword_dependencies
 
-                if param.annotation is inspect.Parameter.empty:
-                    raise MissingTypeHintError(implementation, name)
+    def _create_instance(
+        self,
+        implementation: Dependency,
+        resolution_stack: tuple[Key, ...],
+        scope_state: _ScopeState | None,
+    ) -> object:
+        positional_dependencies, keyword_dependencies = self._resolve_dependencies(
+            implementation,
+            resolution_stack,
+            scope_state,
+        )
+        return implementation(*positional_dependencies, **keyword_dependencies)
 
-                dependency_interface = resolved_hints[name]
-                dependencies[name] = cls.get(dependency_interface)
+    def _resolve_descriptor(
+        self,
+        descriptor: ServiceDescriptor,
+        resolution_stack: tuple[Key, ...],
+        scope_state: _ScopeState | None,
+    ) -> object:
+        if descriptor.lifetime is Lifetime.SINGLETON:
+            if descriptor.has_instance:
+                return descriptor.instance
 
-            return dependencies
-
-        except RecursionError:
-            raise CircularDependencyError([implementation])
-        except CircularDependencyError as e:
-            raise CircularDependencyError([implementation, *e.chain])
-
-    @classmethod
-    def _get_instance(cls, d: Dependency) -> object:
-        kwargs = cls._resolve_dependencies(d)
-        instance: object = d(**kwargs)
-        return instance
-
-    @classmethod
-    def _get_singleton(cls, key: Key) -> object | None:
-        if key in cls._singleton_instances:
-            return cls._singleton_instances[key]
-
-        if key in cls._singletons:
-            implementation = cls._singletons[key]
-            instance = cls._get_instance(implementation)
-            cls.add_singleton_instance(key, instance)
+            instance = self._create_from_descriptor(
+                descriptor,
+                resolution_stack,
+                None,
+            )
+            descriptor.instance = instance
             return instance
 
-        if not isinstance(key, str) and not inspect.isabstract(key):
-            for _, v in cls._singleton_instances.items():
-                if type(v) is key:
-                    return v
+        if descriptor.lifetime is Lifetime.SCOPED:
+            if scope_state is None:
+                raise ScopeRequiredError(descriptor.key)
 
-            for k, v in cls._singletons.items():
-                if v is key:
-                    instance: object = cls._get_instance(v)
-                    cls.add_singleton_instance(k, instance)
-                    return instance
-
-        return None
-
-    @classmethod
-    def _get_transient(cls, key: Key) -> object | None:
-
-        if isinstance(key, str) or (inspect.isabstract(key) and issubclass(key, ABC)):
-            if key in cls._transients:
-                implementation = cls._transients[key]
-                instance: object = cls._get_instance(implementation)
+            found, instance = scope_state.get(descriptor)
+            if found:
                 return instance
-        else:
-            instance: object = cls._get_instance(key)
+
+            instance = self._create_from_descriptor(
+                descriptor,
+                resolution_stack,
+                scope_state,
+            )
+            scope_state.set(descriptor, instance)
             return instance
 
-        return None
+        return self._create_from_descriptor(
+            descriptor,
+            resolution_stack,
+            scope_state,
+        )
+
+    def _create_from_descriptor(
+        self,
+        descriptor: ServiceDescriptor,
+        resolution_stack: tuple[Key, ...],
+        scope_state: _ScopeState | None,
+    ) -> object:
+        if descriptor.factory is not None:
+            context = _ResolutionContext(
+                lambda key: self._resolve(key, resolution_stack, scope_state)
+            )
+            instance = descriptor.factory(context)
+            if not isinstance(descriptor.key, str) and not isinstance(
+                instance, descriptor.key
+            ):
+                raise InstanceTypeError(descriptor.key, instance)
+            return instance
+
+        assert descriptor.implementation is not None
+        return self._create_instance(
+            descriptor.implementation,
+            resolution_stack,
+            scope_state,
+        )
+
+    @staticmethod
+    def _can_autowire(key: Key) -> TypeGuard[Dependency]:
+        return (
+            isinstance(key, type)
+            and key.__module__ != "builtins"
+            and not inspect.isabstract(key)
+        )
+
+    @staticmethod
+    def _validate_registration(
+        key: Key, implementation: Dependency | None
+    ) -> Dependency:
+        if implementation is None:
+            if isinstance(key, str):
+                raise ValueError(
+                    "An implementation is required when registering a string key: "
+                    f"{key!r}."
+                )
+            implementation = key
+
+        if inspect.isabstract(implementation):
+            raise AbstractDependencyError(implementation)
+
+        if not isinstance(key, str) and not issubclass(implementation, key):
+            raise ImplementationMismatchError(key, implementation)
+
+        return implementation
