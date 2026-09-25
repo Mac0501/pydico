@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Hashable, Sequence
+from threading import RLock, local
 from typing import TypeGuard, TypeVar, cast, get_type_hints
 
 from pydico.descriptors import ServiceDescriptor
+from pydico.exceptions import CircularDependencyError
 from pydico.lifetimes import ServiceLifetime
 
 T = TypeVar("T")
@@ -14,10 +16,15 @@ class ServiceProvider:
     def __init__(self, descriptors: Sequence[ServiceDescriptor[object]]) -> None:
         self._descriptors = tuple(descriptors)
         self._singleton_instances: dict[int, object] = {}
+        self._singleton_lock = RLock()
+        self._resolution_state = _ResolutionState()
 
     def get_service(
         self, service_type: type[T], *, key: Hashable | None = None
     ) -> T | None:
+        if key is None and service_type is ServiceProvider:
+            return cast(T, self)
+
         descriptor = self._get_descriptor(service_type, key=key)
         if descriptor is None:
             return None
@@ -54,11 +61,12 @@ class ServiceProvider:
 
         if descriptor.lifetime is ServiceLifetime.SINGLETON:
             cache_key = id(descriptor)
-            if cache_key not in self._singleton_instances:
-                self._singleton_instances[cache_key] = self._create_from_descriptor(
-                    descriptor
-                )
-            return cast(T, self._singleton_instances[cache_key])
+            with self._singleton_lock:
+                if cache_key not in self._singleton_instances:
+                    self._singleton_instances[cache_key] = self._create_from_descriptor(
+                        descriptor
+                    )
+                return cast(T, self._singleton_instances[cache_key])
 
         if descriptor.lifetime is ServiceLifetime.TRANSIENT:
             return self._create_from_descriptor(descriptor)
@@ -66,15 +74,24 @@ class ServiceProvider:
         raise NotImplementedError("Scoped services are not supported yet.")
 
     def _create_from_descriptor(self, descriptor: ServiceDescriptor[T]) -> T:
-        if descriptor.factory is not None:
-            return descriptor.factory(self)
+        stack = self._resolution_state.stack
+        for index, active_descriptor in enumerate(stack):
+            if active_descriptor is descriptor:
+                raise CircularDependencyError((*stack[index:], active_descriptor))
 
-        if descriptor.implementation_type is None:
-            raise TypeError(
-                f"Service type {descriptor.service_type} has no implementation, factory, or instance."
-            )
+        stack.append(cast(ServiceDescriptor[object], descriptor))
+        try:
+            if descriptor.factory is not None:
+                return descriptor.factory(self)
 
-        return self._create_instance(descriptor.implementation_type)
+            if descriptor.implementation_type is None:
+                raise TypeError(
+                    f"Service type {descriptor.service_type} has no implementation, factory, or instance."
+                )
+
+            return self._create_instance(descriptor.implementation_type)
+        finally:
+            stack.pop()
 
     def _create_instance(self, implementation_type: type[T]) -> T:
         signature = inspect.signature(implementation_type.__init__)
@@ -118,3 +135,8 @@ class ServiceProvider:
 
 def _is_type(value: object) -> TypeGuard[type[object]]:
     return isinstance(value, type)
+
+
+class _ResolutionState(local):
+    def __init__(self) -> None:
+        self.stack: list[ServiceDescriptor[object]] = []

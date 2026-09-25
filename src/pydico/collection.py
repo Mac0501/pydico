@@ -1,5 +1,6 @@
 from collections.abc import Callable, Hashable
 from inspect import isabstract
+from threading import RLock
 from typing import Self, TypeVar, overload
 
 from pydico.descriptors import ServiceDescriptor
@@ -13,6 +14,7 @@ class ServiceCollection:
 
     def __init__(self) -> None:
         self._descriptors: list[ServiceDescriptor[object]] = []
+        self._lock = RLock()
 
     @overload
     def add_transient(
@@ -113,7 +115,10 @@ class ServiceCollection:
         )
 
     def build_service_provider(self) -> ServiceProvider:
-        return ServiceProvider(self._descriptors)
+        with self._lock:
+            descriptors = tuple(self._descriptors)
+
+        return ServiceProvider(descriptors)
 
     def _add_descriptor(
         self,
@@ -132,20 +137,22 @@ class ServiceCollection:
             factory=factory,
             instance=instance,
         )
-        self._descriptors.append(
-            ServiceDescriptor(
-                service_type=service_type,
-                implementation_type=(
-                    None
-                    if factory is not None or instance is not None
-                    else implementation_type or service_type
-                ),
-                factory=factory,
-                instance=instance,
-                lifetime=lifetime,
-                key=key,
-            )
+
+        descriptor: ServiceDescriptor[object] = ServiceDescriptor(
+            service_type=service_type,
+            implementation_type=(
+                None
+                if factory is not None or instance is not None
+                else implementation_type or service_type
+            ),
+            factory=factory,
+            instance=instance,
+            lifetime=lifetime,
+            key=key,
         )
+        with self._lock:
+            self._descriptors.append(descriptor)
+
         return self
 
     def _validate_descriptor(
