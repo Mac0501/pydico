@@ -6,6 +6,7 @@ from typing import Self, TypeVar, overload
 from pydico.descriptors import ServiceDescriptor
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
+from pydico.resolver import ServiceResolver
 
 T = TypeVar("T")
 
@@ -38,7 +39,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         *,
-        factory: Callable[[ServiceProvider], T],
+        factory: Callable[[ServiceResolver], T],
         key: Hashable | None = None,
     ) -> Self: ...
 
@@ -47,12 +48,54 @@ class ServiceCollection:
         service_type: type[T],
         implementation_type: type[T] | None = None,
         *,
-        factory: Callable[[ServiceProvider], T] | None = None,
+        factory: Callable[[ServiceResolver], T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
         return self._add_descriptor(
             service_type=service_type,
             lifetime=ServiceLifetime.TRANSIENT,
+            implementation_type=implementation_type,
+            factory=factory,
+            key=key,
+        )
+
+    @overload
+    def add_scoped(
+        self,
+        service_type: type[T],
+        *,
+        key: Hashable | None = None,
+    ) -> Self: ...
+
+    @overload
+    def add_scoped(
+        self,
+        service_type: type[T],
+        implementation_type: type[T],
+        *,
+        key: Hashable | None = None,
+    ) -> Self: ...
+
+    @overload
+    def add_scoped(
+        self,
+        service_type: type[T],
+        *,
+        factory: Callable[[ServiceResolver], T],
+        key: Hashable | None = None,
+    ) -> Self: ...
+
+    def add_scoped(
+        self,
+        service_type: type[T],
+        implementation_type: type[T] | None = None,
+        *,
+        factory: Callable[[ServiceResolver], T] | None = None,
+        key: Hashable | None = None,
+    ) -> Self:
+        return self._add_descriptor(
+            service_type=service_type,
+            lifetime=ServiceLifetime.SCOPED,
             implementation_type=implementation_type,
             factory=factory,
             key=key,
@@ -80,7 +123,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         *,
-        factory: Callable[[ServiceProvider], T],
+        factory: Callable[[ServiceResolver], T],
         key: Hashable | None = None,
     ) -> Self: ...
 
@@ -89,7 +132,7 @@ class ServiceCollection:
         service_type: type[T],
         implementation_type: type[T] | None = None,
         *,
-        factory: Callable[[ServiceProvider], T] | None = None,
+        factory: Callable[[ServiceResolver], T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
         return self._add_descriptor(
@@ -127,7 +170,7 @@ class ServiceCollection:
         lifetime: ServiceLifetime,
         implementation_type: type[T] | None = None,
         instance: T | None = None,
-        factory: Callable[[ServiceProvider], T] | None = None,
+        factory: Callable[[ServiceResolver], T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
 
@@ -159,7 +202,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         implementation_type: type[T] | None,
-        factory: Callable[[ServiceProvider], T] | None,
+        factory: Callable[[ServiceResolver], T] | None,
         instance: T | None,
     ) -> None:
 

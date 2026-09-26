@@ -7,7 +7,7 @@ import pytest
 
 from pydico.collection import ServiceCollection
 from pydico.lifetimes import ServiceLifetime
-from pydico.provider import ServiceProvider
+from pydico.resolver import ServiceResolver
 
 
 class AbstractService(ABC):
@@ -32,7 +32,7 @@ class AbstractImplementation(Service, ABC):
     def run(self) -> str: ...
 
 
-def create_service(_: ServiceProvider) -> Service:
+def create_service(_: ServiceResolver) -> Service:
     return Service()
 
 

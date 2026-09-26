@@ -8,7 +8,7 @@ import pytest
 
 from pydico.collection import ServiceCollection
 from pydico.exceptions import CircularDependencyError
-from pydico.provider import ServiceProvider
+from pydico.resolver import ServiceResolver
 
 T = TypeVar("T")
 
@@ -47,7 +47,7 @@ def test_singleton_is_constructed_once_for_concurrent_resolutions() -> None:
     calls = 0
     calls_lock = Lock()
 
-    def factory(_: ServiceProvider) -> Service:
+    def factory(_: ServiceResolver) -> Service:
         nonlocal calls
         with calls_lock:
             calls += 1
@@ -69,8 +69,8 @@ def test_get_services_uses_singleton_cache_under_concurrency() -> None:
     calls: list[str] = []
     calls_lock = Lock()
 
-    def factory(name: str) -> Callable[[ServiceProvider], Service]:
-        def create(_: ServiceProvider) -> Service:
+    def factory(name: str) -> Callable[[ServiceResolver], Service]:
+        def create(_: ServiceResolver) -> Service:
             with calls_lock:
                 calls.append(name)
             return Service()
@@ -96,7 +96,7 @@ def test_nested_singleton_factories_can_resolve_other_singletons() -> None:
         def __init__(self, inner: Service) -> None:
             self.inner = inner
 
-    def create_outer(service_provider: ServiceProvider) -> Outer:
+    def create_outer(service_provider: ServiceResolver) -> Outer:
         inner = service_provider.get_service(Service)
         assert inner is not None
         return Outer(inner)
@@ -116,7 +116,7 @@ def test_nested_singleton_factories_can_resolve_other_singletons() -> None:
 def test_transient_factories_can_run_in_parallel() -> None:
     entered = Barrier(2)
 
-    def factory(_: ServiceProvider) -> Service:
+    def factory(_: ServiceResolver) -> Service:
         entered.wait(timeout=5)
         return Service()
 
@@ -134,7 +134,7 @@ def test_transient_factories_can_run_in_parallel() -> None:
 def test_independent_providers_do_not_share_singleton_locks_or_instances() -> None:
     entered = Barrier(2)
 
-    def factory(_: ServiceProvider) -> Service:
+    def factory(_: ServiceResolver) -> Service:
         entered.wait(timeout=5)
         return Service()
 
@@ -144,7 +144,7 @@ def test_independent_providers_do_not_share_singleton_locks_or_instances() -> No
 
     start = Barrier(2)
 
-    def resolve(provider: ServiceProvider) -> Service | None:
+    def resolve(provider: ServiceResolver) -> Service | None:
         start.wait(timeout=5)
         return provider.get_service(Service)
 
@@ -160,7 +160,7 @@ def test_independent_providers_do_not_share_singleton_locks_or_instances() -> No
 def test_singleton_factory_failure_is_not_cached_and_stack_is_cleaned() -> None:
     calls = 0
 
-    def factory(_: ServiceProvider) -> Service:
+    def factory(_: ServiceResolver) -> Service:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -265,7 +265,7 @@ def test_circular_dependency_in_constructors_raises_clear_error() -> None:
 def test_resolution_stack_is_thread_local() -> None:
     entered = Barrier(2)
 
-    def factory(_: ServiceProvider) -> Service:
+    def factory(_: ServiceResolver) -> Service:
         entered.wait(timeout=5)
         return Service()
 

@@ -4,8 +4,10 @@ import pytest
 
 from pydico.collection import ServiceCollection
 from pydico.descriptors import ServiceDescriptor
+from pydico.exceptions import ScopedResolutionError
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
+from pydico.resolver import ServiceResolver
 
 # pyright: reportMissingParameterType=false, reportUnknownParameterType=false
 
@@ -171,7 +173,7 @@ def test_keyed_get_services_returns_only_matching_key() -> None:
 
 
 def test_factory_receives_provider_and_can_resolve_dependencies() -> None:
-    def create_consumer(provider: ServiceProvider) -> Consumer:
+    def create_consumer(provider: ServiceResolver) -> Consumer:
         dependency = provider.get_service(Dependency)
         assert dependency is not None
         return Consumer(dependency)
@@ -272,7 +274,7 @@ def test_unregistered_constructor_dependency_raises_lookup_error() -> None:
         provider.get_service(ConsumerWithUnregisteredDependency)
 
 
-def test_scoped_lifetime_is_explicitly_not_implemented_yet() -> None:
+def test_scoped_lifetime_requires_scope() -> None:
     descriptor: ServiceDescriptor[object] = ServiceDescriptor(
         service_type=Service,
         lifetime=ServiceLifetime.SCOPED,
@@ -280,5 +282,5 @@ def test_scoped_lifetime_is_explicitly_not_implemented_yet() -> None:
     )
     provider = ServiceProvider((descriptor,))
 
-    with pytest.raises(NotImplementedError, match="Scoped services"):
+    with pytest.raises(ScopedResolutionError, match="requires an active scope"):
         provider.get_service(Service)

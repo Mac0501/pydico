@@ -57,12 +57,13 @@ annotated parameters from the same provider.
 
 ## Registrations
 
-`ServiceCollection` supports three registration styles:
+`ServiceCollection` supports the following registrations:
 
 ```python
 collection = ServiceCollection()
 
 collection.add_transient(ReportService)
+collection.add_scoped(DbContext)
 collection.add_singleton(Logger)
 collection.add_instance(Settings, Settings(environment="dev"))
 ```
@@ -126,8 +127,44 @@ assert provider.get_service(Logger) is provider.get_service(Logger)
 
 Prebuilt instances are always returned as-is.
 
-Scoped services are not implemented yet. The `ServiceLifetime.SCOPED` enum value
-exists, but resolving a scoped descriptor currently raises `NotImplementedError`.
+Scoped services are created once per registration within each scope. Different
+scopes have independent instances; singletons are shared with the root provider.
+
+```python
+class DbContext:
+    pass
+
+provider = ServiceCollection().add_scoped(DbContext).build_service_provider()
+with provider.create_scope() as first:
+    db = first.get_service(DbContext)
+    assert db is first.get_service(DbContext)
+    with provider.create_scope() as second:
+        assert db is not second.get_service(DbContext)
+```
+
+Resolving a scoped service from the root raises `ScopedResolutionError`. This is
+always enforced, without a validation option. Transient dependencies inherit the
+current resolution context. Singletons are always constructed in the root
+context, even when first requested from a scope, so a singleton cannot resolve
+a scoped dependency through its constructor or supplied factory resolver.
+
+Factories accept `ServiceResolver` (from `pydico.resolver`). Constructor injection
+and unkeyed `get_service()` provide these built-in services:
+
+| Requested type | Root resolution | Scope resolution |
+| --- | --- | --- |
+| `ServiceResolver` | Root provider | Current scope |
+| `ServiceProvider` | Root provider | Root provider |
+| `ServiceScope` | Not registered (`None`) | Current scope |
+
+Use `ServiceResolver` for dependencies that need the current resolution context.
+Built-in services are not added as descriptors: `get_services()` enumerates only
+explicit registrations. Import `ServiceScope` from `pydico.scope`.
+
+Exiting the context manager calls `close()`, including when an exception occurs.
+Closing is idempotent, clears the scope cache and rejects subsequent resolutions
+with `ScopeClosedError`. Existing references remain usable; service `close()` or
+disposal hooks are not invoked automatically.
 
 ## Thread Safety
 
@@ -140,8 +177,12 @@ reentrant lock. Concurrent resolutions of the same singleton create exactly one
 instance, and singleton factories may resolve other singleton services from the
 same provider.
 
-Transient services are not serialized by the provider and may be constructed in
-parallel. Separate providers have separate singleton caches and locks.
+Transient services resolved from the root are not serialized and may be
+constructed in parallel. Separate providers have separate singleton caches and
+locks. Each scope uses its own reentrant lock to serialize resolutions and
+closing, ensuring exactly one successful creation per scoped registration.
+Different scopes can resolve concurrently. Closing waits for running resolutions;
+factories must not wait for another thread to resolve through the same scope.
 
 The provider does not make returned service objects thread-safe. If a service is
 mutable and shared as a singleton, that service must protect its own state.
@@ -168,10 +209,9 @@ registration do not look like false cycles.
 
 This version intentionally keeps the surface small:
 
-- no scope lifecycle yet;
 - no disposal or async disposal hooks yet;
 - no decorator-based function injection yet;
 - constructor auto-wiring only uses registered dependency types;
-- factories receive the full `ServiceProvider`.
+- factories receive the current `ServiceResolver`.
 
 These limits are design space for the next iteration, not permanent constraints.

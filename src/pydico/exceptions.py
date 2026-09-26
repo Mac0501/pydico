@@ -3,6 +3,14 @@ from collections.abc import Sequence
 from pydico.descriptors import ServiceDescriptor
 
 
+class ScopedResolutionError(RuntimeError):
+    """A scoped service was requested outside a scope."""
+
+
+class ScopeClosedError(RuntimeError):
+    """A closed scope cannot resolve services."""
+
+
 class CircularDependencyError(RuntimeError):
     def __init__(self, chain: Sequence[ServiceDescriptor[object]]) -> None:
         self.chain = tuple(chain)

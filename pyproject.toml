@@ -1,7 +1,7 @@
 [project]
 name = "pydico"
 version = "0.1.0"
-description = "A lightweight, .NET-inspired dependency injection container for Python 3.13+ featuring Transient & Singleton lifetimes and type-safe injection."
+description = "A lightweight dependency injection container for Python 3.13+ featuring Transient, Scoped and Singleton lifetimes and type-safe injection."
 readme = "README.md"
 authors = [
     { name = "Mac0501", email = "" }
