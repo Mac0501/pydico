@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from contextvars import Token
-from threading import RLock
+from threading import RLock, local
 from types import TracebackType
 from typing import TypeVar, cast
 
 from pydico._context import activate_resolver, restore_resolver
 from pydico._disposal import close_instances
 from pydico.descriptors import ServiceDescriptor
-from pydico.exceptions import ScopeClosedError
+from pydico.exceptions import CloseDuringResolutionError, ScopeClosedError
 from pydico.lifecycle import SupportsClose
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
@@ -30,6 +30,7 @@ class ServiceScope:
         self._owned_instances: list[SupportsClose] = []
         self._owned_instance_ids: set[int] = set()
         self._lock = RLock()
+        self._resolution_state = _ScopeResolutionState()
         self._closed = False
         self._activation_token: Token[ServiceResolver | None] | None = None
 
@@ -42,35 +43,45 @@ class ServiceScope:
     ) -> T | None:
         with self._lock:
             self._ensure_open()
-            with self._root_provider._resolution_context():
-                if key is None:
-                    if service_type in (ServiceScope, ServiceResolver):
-                        return cast(T, self)
-                    if service_type is ServiceProvider:
-                        return cast(T, self._root_provider)
-                descriptor = self._root_provider._get_descriptor(service_type, key=key)
-                if descriptor is None:
-                    return None
-                result = self._root_provider._get_from_descriptor(
-                    descriptor, scope=self
-                )
-                self._ensure_open()
-                return result
+            self._resolution_state.activity_depth += 1
+            try:
+                with self._root_provider._resolution_context():
+                    if key is None:
+                        if service_type in (ServiceScope, ServiceResolver):
+                            return cast(T, self)
+                        if service_type is ServiceProvider:
+                            return cast(T, self._root_provider)
+                    descriptor = self._root_provider._get_descriptor(
+                        service_type, key=key
+                    )
+                    if descriptor is None:
+                        return None
+                    result = self._root_provider._get_from_descriptor(
+                        descriptor, scope=self
+                    )
+                    self._ensure_open()
+                    return result
+            finally:
+                self._resolution_state.activity_depth -= 1
 
     def get_services(
         self, service_type: type[T], *, key: Hashable | None = None
     ) -> tuple[T, ...]:
         with self._lock:
             self._ensure_open()
-            with self._root_provider._resolution_context():
-                result = tuple(
-                    self._root_provider._get_from_descriptor(descriptor, scope=self)
-                    for descriptor in self._root_provider._get_descriptors(
-                        service_type, key=key
+            self._resolution_state.activity_depth += 1
+            try:
+                with self._root_provider._resolution_context():
+                    result = tuple(
+                        self._root_provider._get_from_descriptor(descriptor, scope=self)
+                        for descriptor in self._root_provider._get_descriptors(
+                            service_type, key=key
+                        )
                     )
-                )
-                self._ensure_open()
-                return result
+                    self._ensure_open()
+                    return result
+            finally:
+                self._resolution_state.activity_depth -= 1
 
     def _get_scoped_instance(self, descriptor: ServiceDescriptor[T]) -> T:
         with self._lock:
@@ -95,6 +106,8 @@ class ServiceScope:
         with self._lock:
             if self._closed:
                 return
+            if self._resolution_state.activity_depth > 0:
+                raise CloseDuringResolutionError(self)
             self._closed = True
             instances = tuple(reversed(self._owned_instances))
             self._owned_instances.clear()
@@ -124,3 +137,8 @@ class ServiceScope:
                 restore_resolver(token)
         finally:
             self.close()
+
+
+class _ScopeResolutionState(local):
+    def __init__(self) -> None:
+        self.activity_depth = 0

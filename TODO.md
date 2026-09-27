@@ -16,3 +16,5 @@ The ordered implementation plan lives in [`ROADMAP.md`](ROADMAP.md).
   (Roadmap phase 7).
 - [x] Add optional, non-instantiating build-time graph diagnostics
   (Roadmap phase 8).
+- [x] Stabilize lifecycle concurrency, injection, and build diagnostics
+  (Roadmap phase 8.1).

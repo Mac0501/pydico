@@ -7,7 +7,7 @@ from collections.abc import Callable, Hashable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from threading import RLock
-from typing import Annotated, Any, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, cast, get_args, get_origin, get_type_hints
 
 from pydico.exceptions import (
     CollectionMaterializationError,
@@ -53,7 +53,8 @@ class DependencyPlan:
         self.callable_target = callable_target
         self.error_target = callable_target if error_target is None else error_target
         self.signature = inspect.signature(callable_target)
-        self._type_hints: dict[str, Any] | None = None
+        self._raw_annotations = dict(getattr(callable_target, "__annotations__", {}))
+        self._resolved_annotations: dict[str, object] = {}
         self._type_hints_lock = RLock()
 
     def required_parameters(self) -> tuple[inspect.Parameter, ...]:
@@ -74,13 +75,12 @@ class DependencyPlan:
         if not parameters:
             return ()
 
-        type_hints = self._get_type_hints()
         requests: list[DependencyRequest] = []
         for parameter in parameters:
-            if parameter.name not in type_hints:
+            if parameter.name not in self._raw_annotations:
                 raise MissingTypeAnnotationError(self.error_target, parameter.name)
 
-            annotation = type_hints[parameter.name]
+            annotation = self._get_type_hint(parameter.name)
             service_type, key, collection_kind = _parse_dependency_annotation(
                 annotation,
                 target=self.error_target,
@@ -98,21 +98,38 @@ class DependencyPlan:
             )
         return tuple(requests)
 
-    def _get_type_hints(self) -> dict[str, Any]:
+    def _get_type_hint(self, parameter_name: str) -> object:
         with self._type_hints_lock:
-            if self._type_hints is None:
-                try:
-                    self._type_hints = get_type_hints(
-                        self.callable_target, include_extras=True
-                    )
-                except Exception as error:
-                    name = getattr(
-                        self.error_target, "__qualname__", repr(self.error_target)
-                    )
-                    raise InjectionError(
-                        f"Cannot resolve type annotations for {name}."
-                    ) from error
-            return self._type_hints
+            if parameter_name in self._resolved_annotations:
+                return self._resolved_annotations[parameter_name]
+
+            holder = type("_AnnotationHolder", (), {})
+            holder.__annotations__ = {
+                parameter_name: self._raw_annotations[parameter_name]
+            }
+            globalns = getattr(self.callable_target, "__globals__", None)
+            localns: dict[str, object] | None = None
+            if isinstance(self.error_target, type):
+                localns = dict(vars(self.error_target))
+                localns[self.error_target.__name__] = self.error_target
+            try:
+                annotation = get_type_hints(
+                    holder,
+                    globalns=globalns,
+                    localns=localns,
+                    include_extras=True,
+                )[parameter_name]
+            except Exception as error:
+                name = getattr(
+                    self.error_target, "__qualname__", repr(self.error_target)
+                )
+                raise InjectionError(
+                    f"Cannot resolve type annotations for {name}: parameter "
+                    f"{parameter_name!r}."
+                ) from error
+
+            self._resolved_annotations[parameter_name] = annotation
+            return annotation
 
 
 def _parse_dependency_annotation(
@@ -201,20 +218,16 @@ def resolve_dependency(
 def _materialize_collection(
     services: tuple[object, ...], kind: CollectionKind
 ) -> object:
-    if kind is CollectionKind.LIST:
-        return list(services)
-    if kind is CollectionKind.TUPLE:
-        return services
-    if kind is CollectionKind.SET:
-        return set(services)
-    return frozenset(services)
+    return _COLLECTION_FACTORIES[kind](services)
 
 
 def _collection_type(kind: CollectionKind) -> type[object]:
-    if kind is CollectionKind.LIST:
-        return list
-    if kind is CollectionKind.TUPLE:
-        return tuple
-    if kind is CollectionKind.SET:
-        return set
-    return frozenset
+    return cast(type[object], _COLLECTION_FACTORIES[kind])
+
+
+_COLLECTION_FACTORIES: dict[CollectionKind, Callable[[Iterable[object]], object]] = {
+    CollectionKind.LIST: list,
+    CollectionKind.TUPLE: tuple,
+    CollectionKind.SET: set,
+    CollectionKind.FROZENSET: frozenset,
+}

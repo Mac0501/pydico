@@ -27,7 +27,7 @@ def inject(target: object = None) -> Callable[..., Any]:
     """Inject missing required arguments via a bound or context resolver.
 
     Supports @inject, @inject(), and @inject(resolver). Explicit arguments and
-    defaults take precedence. Only unkeyed class annotations resolve.
+    defaults take precedence. Plain, keyed, and collection annotations resolve.
     """
     if target is None or (
         callable(getattr(target, "get_service", None))

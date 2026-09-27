@@ -5,6 +5,7 @@ import pytest
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CloseDuringResolutionError,
     CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
@@ -57,6 +58,7 @@ def target(dependency: Service) -> None:
         (ScopeClosedError, ResolutionError),
         (ScopeRequiredError, ResolutionError),
         (CircularDependencyError, ResolutionError),
+        (CloseDuringResolutionError, PydicoError),
         (CollectionMaterializationError, InjectionError),
         (ServiceNotRegisteredError, ResolutionError),
         (InjectionError, ResolutionError),

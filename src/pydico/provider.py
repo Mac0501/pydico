@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Generator, Hashable, Sequence
 from contextlib import contextmanager
-from threading import Condition, RLock, local
+from threading import Condition, RLock, get_ident, local
 from types import TracebackType
 from typing import TYPE_CHECKING, TypeVar, cast
 
+from pydico._context import activate_resolver, restore_resolver
 from pydico._dependencies import DependencyPlan, resolve_dependency
 from pydico._disposal import close_instances
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     CircularDependencyError,
+    CloseDuringResolutionError,
     ProviderClosedError,
     ResolutionError,
     ScopeRequiredError,
@@ -43,6 +45,7 @@ class ServiceProvider:
         self._lifecycle = Condition(RLock())
         self._active_resolutions = 0
         self._closing = False
+        self._closing_thread_id: int | None = None
         self._closed = False
 
     def create_scope(self) -> ServiceScope:
@@ -121,7 +124,13 @@ class ServiceProvider:
             cache_key = id(descriptor)
             with self._singleton_lock:
                 if cache_key not in self._singleton_instances:
-                    instance = self._create_from_descriptor(descriptor, resolver=self)
+                    token = activate_resolver(self)
+                    try:
+                        instance = self._create_from_descriptor(
+                            descriptor, resolver=self
+                        )
+                    finally:
+                        restore_resolver(token)
                     self._singleton_instances[cache_key] = instance
                     instance_id = id(instance)
                     if (
@@ -200,18 +209,20 @@ class ServiceProvider:
             return plan
 
     def close(self) -> None:
+        closing_thread_id = get_ident()
         with self._lifecycle:
             if self._closed:
                 return
+            if self._resolution_state.activity_depth > 0:
+                raise CloseDuringResolutionError(self)
             if self._closing:
+                if self._closing_thread_id == closing_thread_id:
+                    return
                 while not self._closed:
                     self._lifecycle.wait()
                 return
-            if self._resolution_state.activity_depth > 0:
-                raise RuntimeError(
-                    "Cannot close the service provider during service resolution."
-                )
             self._closing = True
+            self._closing_thread_id = closing_thread_id
             while self._active_resolutions > 0:
                 self._lifecycle.wait()
 
@@ -227,6 +238,7 @@ class ServiceProvider:
             with self._lifecycle:
                 self._closed = True
                 self._closing = False
+                self._closing_thread_id = None
                 self._lifecycle.notify_all()
 
     def __enter__(self) -> ServiceProvider:

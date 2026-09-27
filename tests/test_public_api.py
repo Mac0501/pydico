@@ -14,6 +14,7 @@ import pydico.validation as validation_module
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CloseDuringResolutionError,
     CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
@@ -50,6 +51,7 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
     expected = {
         "AbstractTypeRegistrationError",
         "CircularDependencyError",
+        "CloseDuringResolutionError",
         "CollectionMaterializationError",
         "ConflictingInjectKeyError",
         "ConflictingRegistrationError",
@@ -105,6 +107,7 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     error_types = {
         AbstractTypeRegistrationError,
         CircularDependencyError,
+        CloseDuringResolutionError,
         CollectionMaterializationError,
         ConflictingInjectKeyError,
         ConflictingRegistrationError,

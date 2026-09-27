@@ -92,6 +92,14 @@ uv run pyright
 - [x] Keep runtime scope enforcement unchanged; no `ValidateScopes` switch is
   required for normal resolution.
 
+## Phase 8.1 - Lifecycle and Injection Stabilization (complete)
+
+- [x] Prevent provider and scope closing during active resolution without deadlocks.
+- [x] Bind ambient injection to the root while creating singletons.
+- [x] Resolve annotations only for parameters that actually require injection.
+- [x] Deduplicate build-time cycles while preserving their complete entry paths.
+- [x] Remove stale documentation and redundant implementation fragments.
+
 ## Phase 9 - Async Lifecycle
 
 - Design async disposal separately from synchronous resolution.

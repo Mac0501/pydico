@@ -5,6 +5,7 @@ from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CloseDuringResolutionError,
     CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
@@ -36,6 +37,7 @@ from pydico.validation import ServiceProviderValidationError, ValidationIssue
 __all__ = [
     "AbstractTypeRegistrationError",
     "CircularDependencyError",
+    "CloseDuringResolutionError",
     "CollectionMaterializationError",
     "ConflictingInjectKeyError",
     "ConflictingRegistrationError",

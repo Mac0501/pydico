@@ -31,6 +31,7 @@ class _ServiceGraphValidator:
         self._processed: set[int] = set()
         self._stack: list[ServiceDescriptor[object]] = []
         self._plans: dict[type[object], DependencyPlan] = {}
+        self._reported_cycles: set[tuple[int, ...]] = set()
 
     def validate(self) -> tuple[ValidationIssue, ...]:
         for descriptor in self._descriptors:
@@ -45,12 +46,24 @@ class _ServiceGraphValidator:
         for index, active in enumerate(self._stack):
             if active is descriptor:
                 cycle_descriptors = (*self._stack[index:], descriptor)
+                cycle_key = _normalize_cycle(
+                    tuple(id(item) for item in cycle_descriptors[:-1])
+                )
+                if cycle_key in self._reported_cycles:
+                    return
+                self._reported_cycles.add(cycle_key)
                 cycle = tuple(
                     ServiceIdentifier(item.service_type, item.key)
                     for item in cycle_descriptors
                 )
                 self._issues.append(
-                    ValidationIssue(CircularDependencyError(cycle), cycle)
+                    ValidationIssue(
+                        CircularDependencyError(cycle),
+                        (
+                            *self._current_path(),
+                            ServiceIdentifier(descriptor.service_type, descriptor.key),
+                        ),
+                    )
                 )
                 return
 
@@ -158,3 +171,11 @@ def _is_builtin_service(service_type: type[object]) -> bool:
     from pydico.scope import ServiceScope
 
     return service_type in (ServiceProvider, ServiceResolver, ServiceScope)
+
+
+def _normalize_cycle(descriptor_ids: tuple[int, ...]) -> tuple[int, ...]:
+    rotations = tuple(
+        descriptor_ids[index:] + descriptor_ids[:index]
+        for index in range(len(descriptor_ids))
+    )
+    return min(rotations)

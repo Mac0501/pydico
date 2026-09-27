@@ -194,5 +194,7 @@ def test_type_hints_are_cached_per_constructor_and_decorated_function(
     wrapped()
     wrapped()
 
-    assert calls.count(Consumer.__init__) == 1
-    assert calls.count(action) == 1
+    assert len(calls) == 2
+    assert all(
+        getattr(target, "__name__", None) == "_AnnotationHolder" for target in calls
+    )

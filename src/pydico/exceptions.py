@@ -93,6 +93,15 @@ class ScopeClosedError(ResolutionError):
         )
 
 
+class CloseDuringResolutionError(PydicoError):
+    def __init__(self, resource: object) -> None:
+        self.resource = resource
+        resource_name = type(resource).__qualname__
+        super().__init__(
+            f"Cannot close {resource_name} while it is resolving services."
+        )
+
+
 class ScopeRequiredError(ResolutionError):
     def __init__(
         self,

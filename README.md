@@ -249,8 +249,9 @@ with provider.create_scope() as first:
 Resolving a scoped service from the root raises `ScopeRequiredError`. This is
 always enforced, without a validation option. Transient dependencies inherit the
 current resolution context. Singletons are always constructed in the root
-context, even when first requested from a scope, so a singleton cannot resolve
-a scoped dependency through its constructor or supplied factory resolver.
+context, even when first requested from a scope. This root binding also applies
+to ambient `@inject` calls made during singleton construction, so a singleton
+cannot capture a scoped dependency.
 
 Factories accept `ServiceResolver`, which can be imported directly from
 `pydico`. Constructor injection and unkeyed `get_service()` provide these
@@ -317,6 +318,10 @@ remaining services and raises one `DisposalError` containing the original
 exceptions in its `errors` tuple. A closed provider rejects new resolution and
 scope creation with `ProviderClosedError`.
 
+Closing a provider or scope from inside one of its active resolutions raises
+`CloseDuringResolutionError`. Reentrant provider closing from an owned service's
+`close()` method is treated as part of the already running close operation.
+
 ## Function Injection
 
 Entering a service scope automatically activates it for `@inject`. Decorated
@@ -352,8 +357,9 @@ never injected. Use `@classmethod` outside `@inject`.
 Unresolvable local forward references must be replaced with concrete annotations
 or types available in the function's module.
 
-Missing resolvers, invalid annotations and missing registrations raise
-`InjectionError` from `pydico.exceptions`. Factory and function errors propagate.
+Missing resolvers and invalid annotations raise `InjectionError`; a missing
+single registration raises `ServiceNotRegisteredError`. Factory and function
+errors propagate.
 Normal and async functions are supported; generators are rejected. Async
 injection happens when the coroutine executes, not when it is created.
 Runtime signatures and metadata are preserved; static typing preserves the
@@ -447,7 +453,9 @@ Common concrete errors include:
 - `NoActiveScopeError` when `@inject` is called outside an active scope;
 - `MissingTypeAnnotationError` and `UnsupportedTypeAnnotationError` for
   parameters that cannot be injected;
-- `CircularDependencyError` for constructor or factory cycles.
+- `CircularDependencyError` for constructor or factory cycles;
+- `CloseDuringResolutionError` when a provider or scope is closed from one of
+  its active resolutions;
 - `ServiceProviderValidationError` for aggregated optional build diagnostics.
 
 The exceptions expose structured attributes such as `service_type`, `key`,
@@ -457,9 +465,10 @@ user factories, constructors, and decorated function bodies propagate unchanged.
 
 Constructor injection and `@inject` use the same strict annotation rules. Every
 automatically injected parameter must name exactly one concrete registered type.
-Missing annotations, unions (including `T | None`), and collection annotations
-are rejected. Parameters with defaults and explicitly supplied function
-arguments are left untouched.
+Missing annotations and unions (including `T | None`) are rejected. Supported
+collection annotations resolve all matching services. Parameters with defaults
+and explicitly supplied function arguments are left untouched, including their
+annotations.
 
 ## Current Limits
 
@@ -467,7 +476,6 @@ This version intentionally keeps the surface small:
 
 - no async disposal hooks yet;
 - constructor auto-wiring only uses registered dependency types;
-- collection injection is not supported yet;
 - factories receive the current `ServiceResolver`.
 
 These limits are design space for the next iteration, not permanent constraints.
