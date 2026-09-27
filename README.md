@@ -25,7 +25,7 @@ pip install pydico
 ## Quick Start
 
 ```python
-from pydico.collection import ServiceCollection
+from pydico import ServiceCollection
 
 
 class Logger:
@@ -150,8 +150,9 @@ current resolution context. Singletons are always constructed in the root
 context, even when first requested from a scope, so a singleton cannot resolve
 a scoped dependency through its constructor or supplied factory resolver.
 
-Factories accept `ServiceResolver` (from `pydico.resolver`). Constructor injection
-and unkeyed `get_service()` provide these built-in services:
+Factories accept `ServiceResolver`, which can be imported directly from
+`pydico`. Constructor injection and unkeyed `get_service()` provide these
+built-in services:
 
 | Requested type | Root resolution | Scope resolution |
 | --- | --- | --- |
@@ -161,7 +162,8 @@ and unkeyed `get_service()` provide these built-in services:
 
 Use `ServiceResolver` for dependencies that need the current resolution context.
 Built-in services are not added as descriptors: `get_services()` enumerates only
-explicit registrations. Import `ServiceScope` from `pydico.scope`.
+explicit registrations. Public types such as `ServiceScope` can be imported
+directly from `pydico`.
 
 Exiting the context manager calls `close()`, including when an exception occurs.
 Closing is idempotent, clears the scope cache and rejects subsequent resolutions
@@ -170,25 +172,28 @@ disposal hooks are not invoked automatically.
 
 ## Function Injection
 
-Use `@inject` with a context-local resolver, activated at the application entry
-point. Creating a scope alone does not activate it for decorated functions.
+Entering a service scope automatically activates it for `@inject`. Decorated
+functions therefore do not need to receive or locate a provider themselves.
 
 ```python
-from pydico import inject, use_resolver
+from pydico import inject
 
 @inject
 def create_report(db: DbContext):
     return db
 
 with provider.create_scope() as scope:
-    with use_resolver(scope):
-        db = create_report()
-        assert db is scope.get_service(DbContext)
+    db = create_report()
+    assert db is scope.get_service(DbContext)
 ```
 
-`@inject()` is equivalent to `@inject`. Alternatively, `@inject(provider)` or
-`@inject(scope)` binds a resolver explicitly, taking precedence over the current
-context. A root-bound function still cannot resolve scoped services.
+`@inject()` is equivalent to `@inject`. Calling a decorated function without
+an active scope raises `InjectionError`. Creating a scope object alone does not
+activate it; activation begins when its `with` block is entered.
+
+An explicitly bound `@inject(provider)` or `@inject(scope)` remains available
+for specialized cases and takes precedence over the active scope. A root-bound
+function still cannot resolve scoped services.
 
 Only missing required parameters are injected. Explicit arguments (including
 `None`) and defaults are preserved. Injection uses unkeyed class annotations;
@@ -204,11 +209,11 @@ injection happens when the coroutine executes, not when it is created.
 Runtime signatures and metadata are preserved; static typing preserves the
 return type but cannot express which arguments may be omitted for injection.
 
-`use_resolver` restores the previous context even on exceptions and never closes
-the resolver. Contexts are isolated between threads and async tasks. Child async
-tasks inherit their creator's context, including the same scope object; they
-must finish before that scope closes. New threads do not automatically receive
-the caller's resolver; activate it explicitly in the worker.
+Nested scope blocks restore the outer scope even when the inner block raises an
+exception. Resolver contexts are isolated between threads and async tasks. Child
+async tasks inherit their creator's active scope and must finish before it
+closes. New threads do not inherit the caller's scope; each worker should enter
+its own scope.
 
 ## Thread Safety
 
@@ -237,7 +242,7 @@ Resolution uses a thread-local stack. Cycles through constructors or factories
 raise `CircularDependencyError` and include the detected descriptor chain:
 
 ```python
-from pydico.exceptions import CircularDependencyError
+from pydico import CircularDependencyError
 
 
 try:

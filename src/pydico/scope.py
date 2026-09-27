@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
+from contextvars import Token
 from threading import RLock
 from types import TracebackType
 from typing import TypeVar, cast
 
+from pydico._context import activate_resolver, restore_resolver
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import ScopeClosedError
 from pydico.provider import ServiceProvider
@@ -25,6 +27,7 @@ class ServiceScope:
         self._scoped_instances: dict[int, object] = {}
         self._lock = RLock()
         self._closed = False
+        self._activation_token: Token[ServiceResolver | None] | None = None
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -81,6 +84,9 @@ class ServiceScope:
     def __enter__(self) -> ServiceScope:
         with self._lock:
             self._ensure_open()
+            if self._activation_token is not None:
+                raise RuntimeError("This service scope is already active.")
+            self._activation_token = activate_resolver(self)
             return self
 
     def __exit__(
@@ -89,4 +95,11 @@ class ServiceScope:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        with self._lock:
+            token = self._activation_token
+            self._activation_token = None
+        try:
+            if token is not None:
+                restore_resolver(token)
+        finally:
+            self.close()

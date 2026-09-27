@@ -30,12 +30,12 @@ uv run pytest -q
 uv run pyright
 ```
 
-## Phase 1 - Public API
+## Phase 1 - Public API (complete)
 
-- Export the supported collection, provider, scope, resolver, lifetime,
-  descriptor, injection helpers, and exceptions from `pydico`.
-- Define `__all__` as the public compatibility boundary.
-- Update examples and add public-import contract tests.
+- [x] Export the supported collection, provider, scope, resolver, lifetime,
+  descriptor, injection decorator, and exceptions from `pydico`.
+- [x] Define `__all__` as the public compatibility boundary.
+- [x] Update examples and add public-import contract tests.
 
 ## Phase 2 - Error Model
 

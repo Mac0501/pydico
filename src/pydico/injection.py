@@ -6,7 +6,7 @@ from functools import wraps
 from threading import RLock
 from typing import Any, TypeVar, cast, get_type_hints, overload
 
-from pydico.context import get_current_resolver
+from pydico._context import current_resolver
 from pydico.exceptions import InjectionError
 from pydico.resolver import ServiceResolver
 
@@ -69,7 +69,7 @@ def _decorate(
             not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
         ]
         if missing:
-            active = resolver if resolver is not None else get_current_resolver()
+            active = resolver if resolver is not None else current_resolver()
             if active is None:
                 raise InjectionError(f"{name}: no active resolver for injection")
             with hints_lock:
