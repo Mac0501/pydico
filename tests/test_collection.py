@@ -40,6 +40,7 @@ def test_registration_methods_return_collection_for_chaining() -> None:
     collection = ServiceCollection()
 
     assert collection.add_transient(Service) is collection
+    assert collection.add_scoped(Service) is collection
     assert collection.add_singleton(Service) is collection
     assert collection.add_instance(Service, Service()) is collection
 

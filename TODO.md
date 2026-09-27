@@ -1,3 +1,7 @@
 # TODO
 
-- [ ] Typecheck pruefen: `ServiceDescriptor[T]`, `factory: Callable[..., T]`, `service_type: type[T]` und `implementation_type: type[T] | None` sollen fuer Interface/ABC + konkrete Implementierung korrekt funktionieren.
+The ordered implementation plan lives in [`ROADMAP.md`](ROADMAP.md).
+
+- [x] Phase 0: Preserve and verify the current baseline.
+- [ ] Verify and improve typing for `ServiceDescriptor[T]`, factories,
+  interfaces/ABCs, and concrete implementations (Roadmap phase 4).

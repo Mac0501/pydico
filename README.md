@@ -8,6 +8,8 @@ snapshot of those registrations.
 The project is still being shaped. Breaking API changes are expected while the
 core model is refined.
 
+The implementation roadmap is maintained in [`ROADMAP.md`](ROADMAP.md).
+
 ## Installation
 
 ```shell
@@ -166,6 +168,48 @@ Closing is idempotent, clears the scope cache and rejects subsequent resolutions
 with `ScopeClosedError`. Existing references remain usable; service `close()` or
 disposal hooks are not invoked automatically.
 
+## Function Injection
+
+Use `@inject` with a context-local resolver, activated at the application entry
+point. Creating a scope alone does not activate it for decorated functions.
+
+```python
+from pydico import inject, use_resolver
+
+@inject
+def create_report(db: DbContext):
+    return db
+
+with provider.create_scope() as scope:
+    with use_resolver(scope):
+        db = create_report()
+        assert db is scope.get_service(DbContext)
+```
+
+`@inject()` is equivalent to `@inject`. Alternatively, `@inject(provider)` or
+`@inject(scope)` binds a resolver explicitly, taking precedence over the current
+context. A root-bound function still cannot resolve scoped services.
+
+Only missing required parameters are injected. Explicit arguments (including
+`None`) and defaults are preserved. Injection uses unkeyed class annotations;
+unions, generic aliases and `Annotated` are not supported. `self`, `cls`, `*args`
+and `**kwargs` are never injected. Use `@classmethod` outside `@inject`.
+Unresolvable local forward references must be replaced with concrete annotations
+or types available in the function's module.
+
+Missing resolvers, invalid annotations and missing registrations raise
+`InjectionError` from `pydico.exceptions`. Factory and function errors propagate.
+Normal and async functions are supported; generators are rejected. Async
+injection happens when the coroutine executes, not when it is created.
+Runtime signatures and metadata are preserved; static typing preserves the
+return type but cannot express which arguments may be omitted for injection.
+
+`use_resolver` restores the previous context even on exceptions and never closes
+the resolver. Contexts are isolated between threads and async tasks. Child async
+tasks inherit their creator's context, including the same scope object; they
+must finish before that scope closes. New threads do not automatically receive
+the caller's resolver; activate it explicitly in the worker.
+
 ## Thread Safety
 
 `ServiceCollection` protects registration writes and provider snapshot creation
@@ -210,8 +254,18 @@ registration do not look like false cycles.
 This version intentionally keeps the surface small:
 
 - no disposal or async disposal hooks yet;
-- no decorator-based function injection yet;
 - constructor auto-wiring only uses registered dependency types;
 - factories receive the current `ServiceResolver`.
 
 These limits are design space for the next iteration, not permanent constraints.
+
+## Development Checks
+
+The current behavior is protected by the test suite and static type checking:
+
+```shell
+uv run pytest -q
+uv run pyright
+```
+
+Both commands must pass before a roadmap phase is considered complete.

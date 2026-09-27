@@ -72,12 +72,16 @@ def test_get_service_returns_none_when_no_registration_matches() -> None:
     provider = ServiceCollection().build_service_provider()
 
     assert provider.get_service(Service) is None
+    assert provider.get_services(Service) == ()
 
 
 def test_get_service_can_resolve_provider_itself() -> None:
     provider = ServiceCollection().build_service_provider()
 
     assert provider.get_service(ServiceProvider) is provider
+    assert provider.get_service(ServiceResolver) is provider
+    assert provider.get_services(ServiceProvider) == ()
+    assert provider.get_services(ServiceResolver) == ()
 
 
 def test_provider_self_resolution_does_not_match_keys() -> None:

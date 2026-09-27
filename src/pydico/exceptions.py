@@ -3,6 +3,10 @@ from collections.abc import Sequence
 from pydico.descriptors import ServiceDescriptor
 
 
+class InjectionError(RuntimeError):
+    """A required function argument could not be injected."""
+
+
 class ScopedResolutionError(RuntimeError):
     """A scoped service was requested outside a scope."""
 
