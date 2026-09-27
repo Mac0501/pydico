@@ -4,6 +4,7 @@ from threading import RLock
 from typing import Self, TypeVar, overload
 
 from pydico._typing import ServiceFactory
+from pydico._validation import validate_descriptors
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     AbstractTypeRegistrationError,
@@ -13,6 +14,7 @@ from pydico.exceptions import (
 )
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
+from pydico.validation import ServiceProviderValidationError
 
 T = TypeVar("T")
 
@@ -163,9 +165,14 @@ class ServiceCollection:
             key=key,
         )
 
-    def build_service_provider(self) -> ServiceProvider:
+    def build_service_provider(self, *, validate: bool = False) -> ServiceProvider:
         with self._lock:
             descriptors = tuple(self._descriptors)
+
+        if validate:
+            issues = validate_descriptors(descriptors)
+            if issues:
+                raise ServiceProviderValidationError(issues)
 
         return ServiceProvider(descriptors)
 

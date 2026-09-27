@@ -68,7 +68,7 @@ def test_constructor_and_function_report_same_missing_annotation_context() -> No
 
 @pytest.mark.parametrize(
     "annotation",
-    [Any, Dependency | None, list[Dependency], tuple[Dependency, ...]],
+    [Any, Dependency | None],
 )
 def test_constructor_and_function_reject_the_same_ambiguous_annotations(
     annotation: object,

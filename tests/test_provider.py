@@ -59,7 +59,7 @@ class ConsumerWithMissingAnnotation:
 
 
 class ConsumerWithUnsupportedAnnotation:
-    def __init__(self, dependency: list[Dependency]) -> None:
+    def __init__(self, dependency: dict[str, Dependency]) -> None:
         self.dependency = dependency
 
 

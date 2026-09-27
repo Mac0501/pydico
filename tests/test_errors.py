@@ -5,6 +5,7 @@ import pytest
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
     DisposalError,
@@ -21,7 +22,9 @@ from pydico import (
     ScopeRequiredError,
     ServiceIdentifier,
     ServiceNotRegisteredError,
+    ServiceProviderValidationError,
     UnsupportedTypeAnnotationError,
+    ValidationIssue,
 )
 
 
@@ -54,6 +57,7 @@ def target(dependency: Service) -> None:
         (ScopeClosedError, ResolutionError),
         (ScopeRequiredError, ResolutionError),
         (CircularDependencyError, ResolutionError),
+        (CollectionMaterializationError, InjectionError),
         (ServiceNotRegisteredError, ResolutionError),
         (InjectionError, ResolutionError),
         (ConflictingInjectKeyError, InjectionError),
@@ -67,6 +71,19 @@ def test_error_hierarchy(
     error_type: type[Exception], base_type: type[Exception]
 ) -> None:
     assert issubclass(error_type, base_type)
+
+
+def test_validation_error_is_a_pydico_error() -> None:
+    issue = ValidationIssue(
+        ServiceNotRegisteredError(Service),
+        (ServiceIdentifier(Service),),
+    )
+    error = ServiceProviderValidationError((issue,))
+
+    assert isinstance(error, PydicoError)
+    assert error.issues == (issue,)
+    assert "Service provider validation failed with 1 issue" in str(error)
+    assert "Service" in str(error)
 
 
 def test_registration_errors_expose_structured_context() -> None:
@@ -100,6 +117,7 @@ def test_resolution_errors_expose_service_and_injection_context() -> None:
     conflicting_key = ConflictingInjectKeyError(
         target, "dependency", ("first", "second")
     )
+    collection = CollectionMaterializationError(target, "dependency", set)
 
     assert required.service_type is Service and required.key == key
     assert missing.service_type is Service and missing.key == key
@@ -110,6 +128,9 @@ def test_resolution_errors_expose_service_and_injection_context() -> None:
     assert conflicting_key.target is target
     assert conflicting_key.parameter_name == "dependency"
     assert conflicting_key.keys == ("first", "second")
+    assert collection.target is target
+    assert collection.parameter_name == "dependency"
+    assert collection.collection_type is set
 
 
 def test_service_identifier_and_cycle_are_immutable_and_key_aware() -> None:

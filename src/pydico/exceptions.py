@@ -191,6 +191,23 @@ class ConflictingInjectKeyError(InjectionError):
         )
 
 
+class CollectionMaterializationError(InjectionError):
+    def __init__(
+        self,
+        target: object,
+        parameter_name: str,
+        collection_type: type[object],
+    ) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        self.collection_type = collection_type
+        super().__init__(
+            f"Cannot materialize parameter {parameter_name!r} of {_name(target)} "
+            f"as {collection_type.__qualname__}. One or more resolved services "
+            "do not satisfy the collection requirements."
+        )
+
+
 class DisposalError(PydicoError):
     def __init__(self, errors: Sequence[Exception]) -> None:
         self.errors = tuple(errors)

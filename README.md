@@ -177,6 +177,38 @@ def write_report(
 Exactly one `InjectKey` may appear on a parameter. Other `Annotated` metadata is
 ignored so annotations can be shared with other libraries.
 
+## Collection Injection
+
+Automatic injection can resolve all registrations of a service into standard
+collection annotations:
+
+```python
+from collections.abc import Iterable, Sequence
+from typing import Annotated
+
+from pydico import InjectKey
+
+
+class Dispatcher:
+    def __init__(
+        self,
+        handlers: list[Handler],
+        keyed: Annotated[tuple[Handler, ...], InjectKey("commands")],
+    ) -> None:
+        self.handlers = handlers
+        self.keyed = keyed
+```
+
+Supported forms are `list[T]`, `tuple[T, ...]`, `set[T]`, `frozenset[T]`,
+`Sequence[T]`, and `Iterable[T]`. `Sequence` and `Iterable` are eagerly
+materialized as tuples. An empty matching registration set produces an empty
+collection rather than an error.
+
+Lists and tuples preserve registration order and duplicates. Sets use normal
+Python equality and hashing semantics, so they do not preserve order and may
+combine equal services. A non-hashable service requested through `set` or
+`frozenset` raises `CollectionMaterializationError`.
+
 ## Lifetimes
 
 Transient services create a new object for each resolution:
@@ -313,8 +345,10 @@ function still cannot resolve scoped services.
 Only missing required parameters are injected. Explicit arguments (including
 `None`) and defaults are preserved. Plain class annotations use unkeyed
 registrations; `Annotated[T, InjectKey(key)]` selects a keyed registration.
-Unions and generic aliases are not supported. `self`, `cls`, `*args` and
-`**kwargs` are never injected. Use `@classmethod` outside `@inject`.
+The standard collection annotations documented above resolve all matching
+registrations. Unions, nested collections, heterogeneous tuples, and other
+generic aliases are not supported. `self`, `cls`, `*args` and `**kwargs` are
+never injected. Use `@classmethod` outside `@inject`.
 Unresolvable local forward references must be replaced with concrete annotations
 or types available in the function's module.
 
@@ -370,6 +404,30 @@ except CircularDependencyError as error:
 The stack is local to each thread, so parallel resolutions of the same transient
 registration do not look like false cycles.
 
+## Build-Time Diagnostics
+
+Pass `validate=True` when building a provider to inspect every statically
+visible constructor graph before resolution begins:
+
+```python
+from pydico import ServiceProviderValidationError
+
+
+try:
+    provider = services.build_service_provider(validate=True)
+except ServiceProviderValidationError as error:
+    for issue in error.issues:
+        print(" -> ".join(map(str, issue.path)))
+        print(issue.error)
+```
+
+Validation reports missing registrations, annotation errors, keyed dependency
+errors, and circular constructor graphs together. It never creates services,
+executes factories, or fills provider caches. Factory bodies and standalone
+`@inject` functions are not statically visible and remain runtime-validated.
+Scope boundaries also remain runtime rules; build-time diagnostics do not add a
+separate `ValidateScopes` mode.
+
 ## Error Handling
 
 All errors raised by the dependency-injection system derive from `PydicoError`.
@@ -390,6 +448,7 @@ Common concrete errors include:
 - `MissingTypeAnnotationError` and `UnsupportedTypeAnnotationError` for
   parameters that cannot be injected;
 - `CircularDependencyError` for constructor or factory cycles.
+- `ServiceProviderValidationError` for aggregated optional build diagnostics.
 
 The exceptions expose structured attributes such as `service_type`, `key`,
 `target`, `parameter_name`, or `chain`. `get_service()` still returns

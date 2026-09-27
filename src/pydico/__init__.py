@@ -5,6 +5,7 @@ from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
     DisposalError,
@@ -30,10 +31,12 @@ from pydico.metadata import InjectKey
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
 from pydico.scope import ServiceScope
+from pydico.validation import ServiceProviderValidationError, ValidationIssue
 
 __all__ = [
     "AbstractTypeRegistrationError",
     "CircularDependencyError",
+    "CollectionMaterializationError",
     "ConflictingInjectKeyError",
     "ConflictingRegistrationError",
     "DisposalError",
@@ -55,9 +58,11 @@ __all__ = [
     "ServiceLifetime",
     "ServiceNotRegisteredError",
     "ServiceProvider",
+    "ServiceProviderValidationError",
     "ServiceResolver",
     "ServiceScope",
     "SupportsClose",
     "UnsupportedTypeAnnotationError",
+    "ValidationIssue",
     "inject",
 ]

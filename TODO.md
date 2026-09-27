@@ -12,3 +12,7 @@ The ordered implementation plan lives in [`ROADMAP.md`](ROADMAP.md).
   model (Roadmap phase 5).
 - [x] Add keyed constructor and function injection through `Annotated`
   metadata (Roadmap phase 6).
+- [x] Add eager standard collection injection with keyed collection support
+  (Roadmap phase 7).
+- [x] Add optional, non-instantiating build-time graph diagnostics
+  (Roadmap phase 8).

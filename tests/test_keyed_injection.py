@@ -205,8 +205,8 @@ def test_annotated_generic_base_remains_unsupported() -> None:
 
     @inject(provider)
     def action(
-        loggers: Annotated[list[Logger], InjectKey("file")],
-    ) -> list[Logger]:
+        loggers: Annotated[list[list[Logger]], InjectKey("file")],
+    ) -> list[list[Logger]]:
         return loggers
 
     with pytest.raises(UnsupportedTypeAnnotationError):

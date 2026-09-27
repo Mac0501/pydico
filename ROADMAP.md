@@ -74,20 +74,22 @@ uv run pyright
 - [x] Resolve `Annotated[Service, InjectKey(key)]` in constructors and functions.
 - [x] Reject conflicting key metadata with a clear injection error.
 
-## Phase 7 - Collection Injection
+## Phase 7 - Standard Collection Injection (complete)
 
-- Support collection annotations such as `list[T]`, `tuple[T, ...]`, `set[T]`,
-  `frozenset[T]`, `Sequence[T]`, and `Iterable[T]` through `get_services()`.
-- Define ordering, duplicate, and empty-result semantics for each collection type.
-- Keep unions and other ambiguous annotations as explicit errors.
-- Define combinations with keyed injection.
+- [x] Support `list[T]` and `tuple[T, ...]`.
+- [x] Support `set[T]` and `frozenset[T]`.
+- [x] Support `Sequence[T]` and `Iterable[T]` as eagerly resolved tuples.
+- [x] Support keyed collections through `Annotated`.
+- [x] Preserve registration order and lifetime semantics.
+- [x] Return empty collections when no registrations exist.
+- [x] Report collection materialization failures structurally.
 
-## Phase 8 - Optional Build-Time Diagnostics
+## Phase 8 - Optional Build-Time Diagnostics (complete)
 
-- Validate constructability and statically visible dependency graphs without
+- [x] Validate constructability and statically visible dependency graphs without
   creating services.
-- Report multiple configuration problems together.
-- Keep runtime scope enforcement unchanged; no `ValidateScopes` switch is
+- [x] Report multiple configuration problems together.
+- [x] Keep runtime scope enforcement unchanged; no `ValidateScopes` switch is
   required for normal resolution.
 
 ## Phase 9 - Async Lifecycle

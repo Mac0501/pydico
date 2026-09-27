@@ -10,9 +10,11 @@ import pydico.metadata as metadata_module
 import pydico.provider as provider_module
 import pydico.resolver as resolver_module
 import pydico.scope as scope_module
+import pydico.validation as validation_module
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    CollectionMaterializationError,
     ConflictingInjectKeyError,
     ConflictingRegistrationError,
     DisposalError,
@@ -34,10 +36,12 @@ from pydico import (
     ServiceLifetime,
     ServiceNotRegisteredError,
     ServiceProvider,
+    ServiceProviderValidationError,
     ServiceResolver,
     ServiceScope,
     SupportsClose,
     UnsupportedTypeAnnotationError,
+    ValidationIssue,
     inject,
 )
 
@@ -46,6 +50,7 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
     expected = {
         "AbstractTypeRegistrationError",
         "CircularDependencyError",
+        "CollectionMaterializationError",
         "ConflictingInjectKeyError",
         "ConflictingRegistrationError",
         "DisposalError",
@@ -67,10 +72,12 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
         "ServiceLifetime",
         "ServiceNotRegisteredError",
         "ServiceProvider",
+        "ServiceProviderValidationError",
         "ServiceResolver",
         "ServiceScope",
         "SupportsClose",
         "UnsupportedTypeAnnotationError",
+        "ValidationIssue",
         "inject",
     }
 
@@ -85,6 +92,11 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     assert ServiceLifetime is lifetimes_module.ServiceLifetime
     assert InjectKey is metadata_module.InjectKey
     assert ServiceProvider is provider_module.ServiceProvider
+    assert (
+        ServiceProviderValidationError
+        is validation_module.ServiceProviderValidationError
+    )
+    assert ValidationIssue is validation_module.ValidationIssue
     assert ServiceResolver is resolver_module.ServiceResolver
     assert ServiceScope is scope_module.ServiceScope
     assert SupportsClose is lifecycle_module.SupportsClose
@@ -93,6 +105,7 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     error_types = {
         AbstractTypeRegistrationError,
         CircularDependencyError,
+        CollectionMaterializationError,
         ConflictingInjectKeyError,
         ConflictingRegistrationError,
         DisposalError,

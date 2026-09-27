@@ -111,7 +111,7 @@ def test_methods_and_metadata() -> None:
         Consumer.method()
 
 
-@pytest.mark.parametrize("annotation", [None, list[Dependency], Dependency | None, Any])
+@pytest.mark.parametrize("annotation", [None, Dependency | None, Any])
 def test_unsupported_or_missing_annotations(annotation: object) -> None:
     def action(dependency: object):
         return dependency

@@ -1,7 +1,7 @@
 """Static registration contracts checked by Pyright, not executed by Pytest."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Annotated, assert_type
 
 from pydico import (
@@ -67,6 +67,24 @@ def keyed_dependency(
     return repository
 
 
+def collection_dependencies(
+    repositories: list[Repository],
+    repository_tuple: tuple[Repository, ...],
+    repository_set: set[Repository],
+    repository_frozenset: frozenset[Repository],
+    repository_sequence: Sequence[Repository],
+    repository_iterable: Iterable[Repository],
+    keyed: Annotated[list[Repository], InjectKey("other")],
+) -> None:
+    assert_type(repositories, list[Repository])
+    assert_type(repository_tuple, tuple[Repository, ...])
+    assert_type(repository_set, set[Repository])
+    assert_type(repository_frozenset, frozenset[Repository])
+    assert_type(repository_sequence, Sequence[Repository])
+    assert_type(repository_iterable, Iterable[Repository])
+    assert_type(keyed, list[Repository])
+
+
 # The component contracts themselves reject unrelated types. At a direct
 # two-type registration call, Python type checkers may infer their common base
 # object; pydico therefore also enforces this relationship at runtime.
@@ -105,3 +123,7 @@ def check_resolution_types(
     assert_type(provider.get_services(Repository), tuple[Repository, ...])
     assert_type(scope.get_service(Repository), Repository | None)
     assert_type(scope.get_services(Repository), tuple[Repository, ...])
+
+
+validated_provider = services.build_service_provider(validate=True)
+assert_type(validated_provider, ServiceProvider)
