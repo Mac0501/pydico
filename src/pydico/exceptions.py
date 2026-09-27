@@ -175,6 +175,22 @@ class UnsupportedTypeAnnotationError(InjectionError):
         )
 
 
+class ConflictingInjectKeyError(InjectionError):
+    def __init__(
+        self,
+        target: object,
+        parameter_name: str,
+        keys: Sequence[Hashable],
+    ) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        self.keys = tuple(keys)
+        super().__init__(
+            f"Parameter {parameter_name!r} of {_name(target)} has multiple "
+            f"InjectKey metadata values: {self.keys!r}. Exactly one is allowed."
+        )
+
+
 class DisposalError(PydicoError):
     def __init__(self, errors: Sequence[Exception]) -> None:
         self.errors = tuple(errors)

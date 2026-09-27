@@ -61,23 +61,25 @@ uv run pyright
 - [x] Add positive and negative Pyright contract cases and document the
   common-base inference limitation for direct two-type calls.
 
-## Phase 5 - Shared Injection Model
+## Phase 5 - Shared Injection Model (complete)
 
-- Parse constructor and function dependencies through one internal request model.
-- Share annotation validation, error reporting, and type-hint caching.
-- Preserve the current resolver and lifetime semantics.
+- [x] Parse constructor and function dependencies through one internal request model.
+- [x] Share annotation validation, error reporting, and type-hint caching.
+- [x] Preserve the current resolver and lifetime semantics.
+- [x] Support required positional-only constructor dependencies.
 
-## Phase 6 - Keyed Injection
+## Phase 6 - Keyed Injection (complete)
 
-- Introduce an `InjectKey` metadata object.
-- Resolve `Annotated[Service, InjectKey(key)]` in constructors and functions.
-- Reject conflicting key metadata with a clear injection error.
+- [x] Introduce an `InjectKey` metadata object.
+- [x] Resolve `Annotated[Service, InjectKey(key)]` in constructors and functions.
+- [x] Reject conflicting key metadata with a clear injection error.
 
-## Phase 7 - Optional and Collection Injection
+## Phase 7 - Collection Injection
 
-- Support `T | None` as an optional dependency.
-- Support `tuple[T, ...]` through `get_services()`.
-- Keep unsupported ambiguous unions explicit errors.
+- Support collection annotations such as `list[T]`, `tuple[T, ...]`, `set[T]`,
+  `frozenset[T]`, `Sequence[T]`, and `Iterable[T]` through `get_services()`.
+- Define ordering, duplicate, and empty-result semantics for each collection type.
+- Keep unions and other ambiguous annotations as explicit errors.
 - Define combinations with keyed injection.
 
 ## Phase 8 - Optional Build-Time Diagnostics

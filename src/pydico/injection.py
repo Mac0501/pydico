@@ -3,17 +3,11 @@
 import inspect
 from collections.abc import Callable
 from functools import wraps
-from threading import RLock
-from typing import Any, TypeVar, cast, get_type_hints, overload
+from typing import Any, TypeVar, cast, overload
 
 from pydico._context import current_resolver
-from pydico.exceptions import (
-    InjectionError,
-    MissingTypeAnnotationError,
-    NoActiveScopeError,
-    ServiceNotRegisteredError,
-    UnsupportedTypeAnnotationError,
-)
+from pydico._dependencies import DependencyPlan, resolve_dependency
+from pydico.exceptions import InjectionError, NoActiveScopeError
 from pydico.resolver import ServiceResolver
 
 R = TypeVar("R")
@@ -55,57 +49,26 @@ def _decorate(
 ) -> Callable[..., R]:
     if inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function):
         raise InjectionError("inject does not support generator functions")
-    signature = inspect.signature(function)
-    name = function.__qualname__
-    hints: dict[str, Any] | None = None
-    hints_lock = RLock()
+    plan = DependencyPlan(function)
+    signature = plan.signature
 
     def arguments(
         args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> inspect.BoundArguments:
-        nonlocal hints
         bound = signature.bind_partial(*args, **kwargs)
-        missing = [
+        missing = tuple(
             parameter
-            for parameter in signature.parameters.values()
+            for parameter in plan.required_parameters()
             if parameter.name not in bound.arguments
-            and parameter.name not in ("self", "cls")
-            and parameter.default is inspect.Parameter.empty
-            and parameter.kind
-            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        ]
+        )
         if missing:
             active = resolver if resolver is not None else current_resolver()
             if active is None:
                 raise NoActiveScopeError(function)
-            with hints_lock:
-                if hints is None:
-                    try:
-                        hints = get_type_hints(function, include_extras=True)
-                    except Exception as error:
-                        raise InjectionError(
-                            f"{name}: cannot resolve type annotations"
-                        ) from error
-                resolved_hints = hints
-            types: list[type[Any]] = []
-            for parameter in missing:
-                annotation = resolved_hints.get(parameter.name)
-                if annotation is None:
-                    raise MissingTypeAnnotationError(function, parameter.name)
-                if not isinstance(annotation, type) or annotation is Any:
-                    raise UnsupportedTypeAnnotationError(
-                        function, parameter.name, annotation
-                    )
-                types.append(annotation)
-            for parameter, service_type in zip(missing, types):
-                value = active.get_service(service_type)
-                if value is None:
-                    raise ServiceNotRegisteredError(
-                        service_type,
-                        target=function,
-                        parameter_name=parameter.name,
-                    )
-                bound.arguments[parameter.name] = value
+            for request in plan.requests(missing):
+                bound.arguments[request.parameter_name] = resolve_dependency(
+                    request, resolver=active, target=function
+                )
         signature.bind(*bound.args, **bound.kwargs)
         return bound
 

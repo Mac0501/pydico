@@ -5,6 +5,7 @@ import pytest
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    ConflictingInjectKeyError,
     ConflictingRegistrationError,
     DisposalError,
     ImplementationTypeMismatchError,
@@ -55,6 +56,7 @@ def target(dependency: Service) -> None:
         (CircularDependencyError, ResolutionError),
         (ServiceNotRegisteredError, ResolutionError),
         (InjectionError, ResolutionError),
+        (ConflictingInjectKeyError, InjectionError),
         (NoActiveScopeError, InjectionError),
         (MissingTypeAnnotationError, InjectionError),
         (UnsupportedTypeAnnotationError, InjectionError),
@@ -95,6 +97,9 @@ def test_resolution_errors_expose_service_and_injection_context() -> None:
     no_scope = NoActiveScopeError(target)
     missing_annotation = MissingTypeAnnotationError(target, "dependency")
     unsupported = UnsupportedTypeAnnotationError(target, "dependency", list[Service])
+    conflicting_key = ConflictingInjectKeyError(
+        target, "dependency", ("first", "second")
+    )
 
     assert required.service_type is Service and required.key == key
     assert missing.service_type is Service and missing.key == key
@@ -102,6 +107,9 @@ def test_resolution_errors_expose_service_and_injection_context() -> None:
     assert no_scope.target is target
     assert missing_annotation.parameter_name == "dependency"
     assert unsupported.annotation == list[Service]
+    assert conflicting_key.target is target
+    assert conflicting_key.parameter_name == "dependency"
+    assert conflicting_key.keys == ("first", "second")
 
 
 def test_service_identifier_and_cycle_are_immutable_and_key_aware() -> None:

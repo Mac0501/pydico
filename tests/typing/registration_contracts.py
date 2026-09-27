@@ -2,9 +2,10 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import assert_type
+from typing import Annotated, assert_type
 
 from pydico import (
+    InjectKey,
     ServiceCollection,
     ServiceDescriptor,
     ServiceLifetime,
@@ -58,6 +59,13 @@ services.add_instance(Repository, SqlRepository())
 
 # Keys separate registrations without changing their static service type.
 services.add_scoped(Repository, OtherRepository, key="other")
+
+
+def keyed_dependency(
+    repository: Annotated[Repository, InjectKey("other")],
+) -> Repository:
+    return repository
+
 
 # The component contracts themselves reject unrelated types. At a direct
 # two-type registration call, Python type checkers may infer their common base

@@ -8,3 +8,7 @@ The ordered implementation plan lives in [`ROADMAP.md`](ROADMAP.md).
 - [x] Phase 3: Add deterministic resource ownership and disposal.
 - [x] Verify and improve typing for `ServiceDescriptor[T]`, factories, ABCs,
   and concrete implementations (Roadmap phase 4).
+- [x] Unify constructor and function injection behind one dependency request
+  model (Roadmap phase 5).
+- [x] Add keyed constructor and function injection through `Annotated`
+  metadata (Roadmap phase 6).

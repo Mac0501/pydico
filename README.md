@@ -150,6 +150,33 @@ console_logger = provider.get_service(Logger, key="console")
 Keys are part of the registration identity. A keyed registration is not returned
 when resolving the same service type without that key.
 
+Use `Annotated` with `InjectKey` to select a keyed registration during automatic
+constructor or function injection:
+
+```python
+from typing import Annotated
+
+from pydico import InjectKey, inject
+
+
+class ReportService:
+    def __init__(
+        self,
+        logger: Annotated[Logger, InjectKey("file")],
+    ) -> None:
+        self.logger = logger
+
+
+@inject
+def write_report(
+    logger: Annotated[Logger, InjectKey("console")],
+) -> None:
+    ...
+```
+
+Exactly one `InjectKey` may appear on a parameter. Other `Annotated` metadata is
+ignored so annotations can be shared with other libraries.
+
 ## Lifetimes
 
 Transient services create a new object for each resolution:
@@ -284,9 +311,10 @@ for specialized cases and takes precedence over the active scope. A root-bound
 function still cannot resolve scoped services.
 
 Only missing required parameters are injected. Explicit arguments (including
-`None`) and defaults are preserved. Injection uses unkeyed class annotations;
-unions, generic aliases and `Annotated` are not supported. `self`, `cls`, `*args`
-and `**kwargs` are never injected. Use `@classmethod` outside `@inject`.
+`None`) and defaults are preserved. Plain class annotations use unkeyed
+registrations; `Annotated[T, InjectKey(key)]` selects a keyed registration.
+Unions and generic aliases are not supported. `self`, `cls`, `*args` and
+`**kwargs` are never injected. Use `@classmethod` outside `@inject`.
 Unresolvable local forward references must be replaced with concrete annotations
 or types available in the function's module.
 
@@ -368,12 +396,19 @@ The exceptions expose structured attributes such as `service_type`, `key`,
 `None` when an optional lookup has no registration. Exceptions raised inside
 user factories, constructors, and decorated function bodies propagate unchanged.
 
+Constructor injection and `@inject` use the same strict annotation rules. Every
+automatically injected parameter must name exactly one concrete registered type.
+Missing annotations, unions (including `T | None`), and collection annotations
+are rejected. Parameters with defaults and explicitly supplied function
+arguments are left untouched.
+
 ## Current Limits
 
 This version intentionally keeps the surface small:
 
 - no async disposal hooks yet;
 - constructor auto-wiring only uses registered dependency types;
+- collection injection is not supported yet;
 - factories receive the current `ServiceResolver`.
 
 These limits are design space for the next iteration, not permanent constraints.

@@ -6,16 +6,19 @@ import pydico.identifiers as identifiers_module
 import pydico.injection as injection_module
 import pydico.lifecycle as lifecycle_module
 import pydico.lifetimes as lifetimes_module
+import pydico.metadata as metadata_module
 import pydico.provider as provider_module
 import pydico.resolver as resolver_module
 import pydico.scope as scope_module
 from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
+    ConflictingInjectKeyError,
     ConflictingRegistrationError,
     DisposalError,
     ImplementationTypeMismatchError,
     InjectionError,
+    InjectKey,
     InstanceTypeMismatchError,
     MissingTypeAnnotationError,
     NoActiveScopeError,
@@ -43,10 +46,12 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
     expected = {
         "AbstractTypeRegistrationError",
         "CircularDependencyError",
+        "ConflictingInjectKeyError",
         "ConflictingRegistrationError",
         "DisposalError",
         "ImplementationTypeMismatchError",
         "InjectionError",
+        "InjectKey",
         "InstanceTypeMismatchError",
         "MissingTypeAnnotationError",
         "NoActiveScopeError",
@@ -78,6 +83,7 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     assert ServiceDescriptor is descriptors_module.ServiceDescriptor
     assert ServiceIdentifier is identifiers_module.ServiceIdentifier
     assert ServiceLifetime is lifetimes_module.ServiceLifetime
+    assert InjectKey is metadata_module.InjectKey
     assert ServiceProvider is provider_module.ServiceProvider
     assert ServiceResolver is resolver_module.ServiceResolver
     assert ServiceScope is scope_module.ServiceScope
@@ -87,6 +93,7 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     error_types = {
         AbstractTypeRegistrationError,
         CircularDependencyError,
+        ConflictingInjectKeyError,
         ConflictingRegistrationError,
         DisposalError,
         ImplementationTypeMismatchError,

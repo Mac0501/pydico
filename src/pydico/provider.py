@@ -1,23 +1,19 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Generator, Hashable, Sequence
 from contextlib import contextmanager
 from threading import Condition, RLock, local
 from types import TracebackType
-from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast, get_type_hints
+from typing import TYPE_CHECKING, TypeVar, cast
 
+from pydico._dependencies import DependencyPlan, resolve_dependency
 from pydico._disposal import close_instances
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     CircularDependencyError,
-    InjectionError,
-    MissingTypeAnnotationError,
     ProviderClosedError,
     ResolutionError,
     ScopeRequiredError,
-    ServiceNotRegisteredError,
-    UnsupportedTypeAnnotationError,
 )
 from pydico.identifiers import ServiceIdentifier
 from pydico.lifecycle import SupportsClose
@@ -41,6 +37,8 @@ class ServiceProvider:
         self._owned_singletons: list[SupportsClose] = []
         self._owned_singleton_ids: set[int] = set()
         self._singleton_lock = RLock()
+        self._constructor_plans: dict[type[object], DependencyPlan] = {}
+        self._constructor_plans_lock = RLock()
         self._resolution_state = _ResolutionState()
         self._lifecycle = Condition(RLock())
         self._active_resolutions = 0
@@ -173,49 +171,33 @@ class ServiceProvider:
     def _create_instance(
         self, implementation_type: type[T], *, resolver: ServiceResolver
     ) -> T:
-        signature = inspect.signature(implementation_type.__init__)
-        try:
-            type_hints = get_type_hints(implementation_type.__init__)
-        except Exception as error:
-            raise InjectionError(
-                f"Cannot resolve type annotations for "
-                f"{implementation_type.__qualname__}."
-            ) from error
+        plan = self._get_constructor_plan(implementation_type)
+        requests = plan.requests(plan.required_parameters())
+        args: list[object] = []
         kwargs: dict[str, object] = {}
 
-        for name, parameter in signature.parameters.items():
-            if name == "self":
-                continue
+        for request in requests:
+            dependency = resolve_dependency(
+                request, resolver=resolver, target=implementation_type
+            )
+            if request.positional_only:
+                args.append(dependency)
+            else:
+                kwargs[request.parameter_name] = dependency
 
-            if parameter.kind in (
-                inspect.Parameter.VAR_POSITIONAL,
-                inspect.Parameter.VAR_KEYWORD,
-            ):
-                continue
+        return implementation_type(*args, **kwargs)
 
-            if parameter.default is not inspect.Parameter.empty:
-                continue
-
-            annotation = type_hints.get(name)
-            if annotation is None:
-                raise MissingTypeAnnotationError(implementation_type, name)
-
-            if not _is_type(annotation):
-                raise UnsupportedTypeAnnotationError(
-                    implementation_type, name, annotation
+    def _get_constructor_plan(
+        self, implementation_type: type[object]
+    ) -> DependencyPlan:
+        with self._constructor_plans_lock:
+            plan = self._constructor_plans.get(implementation_type)
+            if plan is None:
+                plan = DependencyPlan(
+                    implementation_type.__init__, error_target=implementation_type
                 )
-
-            dependency = resolver.get_service(annotation)
-            if dependency is None:
-                raise ServiceNotRegisteredError(
-                    annotation,
-                    target=implementation_type,
-                    parameter_name=name,
-                )
-
-            kwargs[name] = dependency
-
-        return implementation_type(**kwargs)
+                self._constructor_plans[implementation_type] = plan
+            return plan
 
     def close(self) -> None:
         with self._lifecycle:
@@ -259,10 +241,6 @@ class ServiceProvider:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
-
-
-def _is_type(value: object) -> TypeGuard[type[object]]:
-    return isinstance(value, type)
 
 
 class _ResolutionState(local):
