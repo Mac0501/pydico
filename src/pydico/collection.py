@@ -1,8 +1,9 @@
-from collections.abc import Callable, Hashable
+from collections.abc import Hashable
 from inspect import isabstract
 from threading import RLock
 from typing import Self, TypeVar, overload
 
+from pydico._typing import ServiceFactory
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     AbstractTypeRegistrationError,
@@ -12,7 +13,6 @@ from pydico.exceptions import (
 )
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
-from pydico.resolver import ServiceResolver
 
 T = TypeVar("T")
 
@@ -45,7 +45,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         *,
-        factory: Callable[[ServiceResolver], T],
+        factory: ServiceFactory[T],
         key: Hashable | None = None,
     ) -> Self: ...
 
@@ -54,7 +54,7 @@ class ServiceCollection:
         service_type: type[T],
         implementation_type: type[T] | None = None,
         *,
-        factory: Callable[[ServiceResolver], T] | None = None,
+        factory: ServiceFactory[T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
         return self._add_descriptor(
@@ -87,7 +87,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         *,
-        factory: Callable[[ServiceResolver], T],
+        factory: ServiceFactory[T],
         key: Hashable | None = None,
     ) -> Self: ...
 
@@ -96,7 +96,7 @@ class ServiceCollection:
         service_type: type[T],
         implementation_type: type[T] | None = None,
         *,
-        factory: Callable[[ServiceResolver], T] | None = None,
+        factory: ServiceFactory[T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
         return self._add_descriptor(
@@ -129,7 +129,7 @@ class ServiceCollection:
         self,
         service_type: type[T],
         *,
-        factory: Callable[[ServiceResolver], T],
+        factory: ServiceFactory[T],
         key: Hashable | None = None,
     ) -> Self: ...
 
@@ -138,7 +138,7 @@ class ServiceCollection:
         service_type: type[T],
         implementation_type: type[T] | None = None,
         *,
-        factory: Callable[[ServiceResolver], T] | None = None,
+        factory: ServiceFactory[T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
         return self._add_descriptor(
@@ -176,7 +176,7 @@ class ServiceCollection:
         lifetime: ServiceLifetime,
         implementation_type: type[T] | None = None,
         instance: T | None = None,
-        factory: Callable[[ServiceResolver], T] | None = None,
+        factory: ServiceFactory[T] | None = None,
         key: Hashable | None = None,
     ) -> Self:
 
@@ -187,7 +187,7 @@ class ServiceCollection:
             instance=instance,
         )
 
-        descriptor: ServiceDescriptor[object] = ServiceDescriptor(
+        descriptor = ServiceDescriptor(
             service_type=service_type,
             implementation_type=(
                 None
@@ -199,16 +199,19 @@ class ServiceCollection:
             lifetime=lifetime,
             key=key,
         )
-        with self._lock:
-            self._descriptors.append(descriptor)
+        self._append_descriptor(descriptor)
 
         return self
+
+    def _append_descriptor(self, descriptor: ServiceDescriptor[object]) -> None:
+        with self._lock:
+            self._descriptors.append(descriptor)
 
     def _validate_descriptor(
         self,
         service_type: type[T],
         implementation_type: type[T] | None,
-        factory: Callable[[ServiceResolver], T] | None,
+        factory: ServiceFactory[T] | None,
         instance: T | None,
     ) -> None:
 

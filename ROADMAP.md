@@ -46,19 +46,20 @@ uv run pyright
   useful.
 - [x] Replace incidental built-in exceptions in public resolution paths.
 
-## Phase 3 - Resource Lifecycle
+## Phase 3 - Resource Lifecycle (complete)
 
-- Track container-owned scoped and singleton instances.
-- Close them in reverse creation order.
-- Add idempotent provider closing and provider context-manager support.
-- Never automatically close transient or externally supplied instances.
-- Define and test behavior for concurrent resolution and closing.
+- [x] Track container-owned scoped and singleton instances.
+- [x] Close them in reverse creation order.
+- [x] Add idempotent provider closing and provider context-manager support.
+- [x] Never automatically close transient or externally supplied instances.
+- [x] Define and test behavior for concurrent resolution and closing.
 
-## Phase 4 - Registration Typing
+## Phase 4 - Registration Typing (complete)
 
-- Model interface/ABC registrations with concrete implementations correctly.
-- Tighten descriptor and factory generics and overloads.
-- Add positive and negative Pyright contract cases.
+- [x] Model class and ABC registrations with concrete implementations.
+- [x] Tighten descriptor covariance, factory generics, and registration overloads.
+- [x] Add positive and negative Pyright contract cases and document the
+  common-base inference limitation for direct two-type calls.
 
 ## Phase 5 - Shared Injection Model
 

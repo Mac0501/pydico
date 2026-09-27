@@ -6,11 +6,13 @@ from pydico.exceptions import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
     ConflictingRegistrationError,
+    DisposalError,
     ImplementationTypeMismatchError,
     InjectionError,
     InstanceTypeMismatchError,
     MissingTypeAnnotationError,
     NoActiveScopeError,
+    ProviderClosedError,
     PydicoError,
     RegistrationError,
     ResolutionError,
@@ -21,6 +23,7 @@ from pydico.exceptions import (
 )
 from pydico.identifiers import ServiceIdentifier
 from pydico.injection import inject
+from pydico.lifecycle import SupportsClose
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
@@ -30,12 +33,14 @@ __all__ = [
     "AbstractTypeRegistrationError",
     "CircularDependencyError",
     "ConflictingRegistrationError",
+    "DisposalError",
     "ImplementationTypeMismatchError",
     "InjectionError",
     "InstanceTypeMismatchError",
     "MissingTypeAnnotationError",
     "NoActiveScopeError",
     "PydicoError",
+    "ProviderClosedError",
     "RegistrationError",
     "ResolutionError",
     "ScopeClosedError",
@@ -48,6 +53,7 @@ __all__ = [
     "ServiceProvider",
     "ServiceResolver",
     "ServiceScope",
+    "SupportsClose",
     "UnsupportedTypeAnnotationError",
     "inject",
 ]

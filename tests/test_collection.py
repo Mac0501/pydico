@@ -128,9 +128,7 @@ def test_abstract_implementation_is_rejected() -> None:
 
 def test_implementation_must_subclass_service_type() -> None:
     with pytest.raises(ImplementationTypeMismatchError, match="cannot be registered"):
-        ServiceCollection().add_transient(
-            Service, AnotherService
-        )  # pyright: ignore[reportArgumentType]
+        ServiceCollection().add_transient(Service, AnotherService)
 
 
 def test_instance_must_match_service_type() -> None:
@@ -138,6 +136,4 @@ def test_instance_must_match_service_type() -> None:
         InstanceTypeMismatchError,
         match=re.escape("cannot be registered for service"),
     ):
-        ServiceCollection().add_instance(
-            Service, AnotherService()
-        )  # pyright: ignore[reportArgumentType]
+        ServiceCollection().add_instance(Service, AnotherService())

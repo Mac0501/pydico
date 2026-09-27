@@ -8,6 +8,7 @@
   "extraPaths": ["src"],
   "reportMissingImports": true,
   "reportUnusedImport": "warning",
+  "reportUnnecessaryTypeIgnoreComment": "error",
   "reportOptionalMemberAccess": "warning",
   "reportMissingTypeStubs": "none",
   "reportUnknownMemberType": "none",

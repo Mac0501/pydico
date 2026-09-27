@@ -89,6 +89,49 @@ For multiple registrations of the same service type, `get_service()` returns the
 last matching registration and `get_services()` returns all matches in
 registration order.
 
+## Static Typing
+
+Registration and resolution are typed for concrete classes, base classes, and
+abstract base classes:
+
+```python
+from abc import ABC, abstractmethod
+from typing import assert_type
+
+from pydico import ServiceCollection
+
+
+class Repository(ABC):
+    @abstractmethod
+    def save(self) -> None:
+        ...
+
+
+class SqlRepository(Repository):
+    def save(self) -> None:
+        ...
+
+
+provider = (
+    ServiceCollection()
+    .add_scoped(Repository, SqlRepository)
+    .build_service_provider()
+)
+
+assert_type(provider.get_service(Repository), Repository | None)
+```
+
+Factories may return the registered service type or a concrete subtype.
+`ServiceDescriptor` is covariant, so a descriptor for a concrete implementation
+can be used where a descriptor for its base service is expected. Runtime
+validation remains active when static checking is bypassed.
+
+Python type checkers can infer the common base `object` for two unrelated class
+arguments in a direct registration call. pydico therefore keeps runtime
+`issubclass()` and `isinstance()` validation as the authoritative safety net.
+Structural `Protocol` service types are not part of the guaranteed typing
+contract yet; use concrete classes or ABCs.
+
 ## Keys
 
 Registrations can be separated with a hashable key:
@@ -167,8 +210,53 @@ directly from `pydico`.
 
 Exiting the context manager calls `close()`, including when an exception occurs.
 Closing is idempotent, clears the scope cache and rejects subsequent resolutions
-with `ScopeClosedError`. Existing references remain usable; service `close()` or
-disposal hooks are not invoked automatically.
+with `ScopeClosedError`. Container-created scoped services implementing
+`SupportsClose` are closed automatically in reverse creation order.
+
+## Resource Lifecycle
+
+`SupportsClose` is a runtime-checkable structural protocol:
+
+```python
+from pydico import SupportsClose
+
+
+class Database:
+    def close(self) -> None:
+        ...
+
+
+assert isinstance(Database(), SupportsClose)
+```
+
+Services do not need to inherit from a pydico base class. Ownership follows the
+registration lifetime:
+
+| Registration | Owner | Automatic close |
+| --- | --- | --- |
+| container-created scoped service | Scope | Yes |
+| scoped factory result | Scope | Yes |
+| container-created singleton | Provider | Yes |
+| singleton factory result | Provider | Yes |
+| transient service | Caller | No |
+| `add_instance()` value | Caller | No |
+
+Use the provider as a context manager when it owns singleton resources:
+
+```python
+services = ServiceCollection().add_singleton(HttpClient)
+
+with services.build_service_provider() as provider:
+    client = provider.get_service(HttpClient)
+
+# The container-created HttpClient is closed here.
+```
+
+Scopes and providers close owned services in reverse creation order. Closing is
+idempotent. If multiple service `close()` calls fail, pydico still attempts all
+remaining services and raises one `DisposalError` containing the original
+exceptions in its `errors` tuple. A closed provider rejects new resolution and
+scope creation with `ProviderClosedError`.
 
 ## Function Injection
 
@@ -267,6 +355,8 @@ Common concrete errors include:
   incompatible registrations;
 - `AbstractTypeRegistrationError` when an abstract type would be instantiated;
 - `ScopeRequiredError` and `ScopeClosedError` for invalid scope usage;
+- `ProviderClosedError` when a closed provider is used;
+- `DisposalError` when owned services fail to close;
 - `ServiceNotRegisteredError` when a required injected service is missing;
 - `NoActiveScopeError` when `@inject` is called outside an active scope;
 - `MissingTypeAnnotationError` and `UnsupportedTypeAnnotationError` for
@@ -282,7 +372,7 @@ user factories, constructors, and decorated function bodies propagate unchanged.
 
 This version intentionally keeps the surface small:
 
-- no disposal or async disposal hooks yet;
+- no async disposal hooks yet;
 - constructor auto-wiring only uses registered dependency types;
 - factories receive the current `ServiceResolver`.
 

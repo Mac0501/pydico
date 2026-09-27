@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Hashable, Sequence
-from threading import RLock, local
+from collections.abc import Generator, Hashable, Sequence
+from contextlib import contextmanager
+from threading import Condition, RLock, local
+from types import TracebackType
 from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast, get_type_hints
 
+from pydico._disposal import close_instances
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     CircularDependencyError,
     InjectionError,
     MissingTypeAnnotationError,
+    ProviderClosedError,
     ResolutionError,
     ScopeRequiredError,
     ServiceNotRegisteredError,
     UnsupportedTypeAnnotationError,
 )
 from pydico.identifiers import ServiceIdentifier
+from pydico.lifecycle import SupportsClose
 from pydico.lifetimes import ServiceLifetime
 from pydico.resolver import ServiceResolver
 
@@ -33,32 +38,63 @@ class ServiceProvider:
     def __init__(self, descriptors: Sequence[ServiceDescriptor[object]]) -> None:
         self._descriptors = tuple(descriptors)
         self._singleton_instances: dict[int, object] = {}
+        self._owned_singletons: list[SupportsClose] = []
+        self._owned_singleton_ids: set[int] = set()
         self._singleton_lock = RLock()
         self._resolution_state = _ResolutionState()
+        self._lifecycle = Condition(RLock())
+        self._active_resolutions = 0
+        self._closing = False
+        self._closed = False
 
     def create_scope(self) -> ServiceScope:
         from pydico.scope import ServiceScope
 
-        return ServiceScope(self)
+        with self._lifecycle:
+            self._ensure_open()
+            return ServiceScope(self)
 
     def get_service(
         self, service_type: type[T], *, key: Hashable | None = None
     ) -> T | None:
-        if key is None and service_type in (ServiceProvider, ServiceResolver):
-            return cast(T, self)
+        with self._resolution_context():
+            if key is None and service_type in (ServiceProvider, ServiceResolver):
+                return cast(T, self)
 
-        descriptor = self._get_descriptor(service_type, key=key)
-        if descriptor is None:
-            return None
-        return self._get_from_descriptor(descriptor)
+            descriptor = self._get_descriptor(service_type, key=key)
+            if descriptor is None:
+                return None
+            return self._get_from_descriptor(descriptor)
 
     def get_services(
         self, service_type: type[T], *, key: Hashable | None = None
     ) -> tuple[T, ...]:
-        return tuple(
-            self._get_from_descriptor(descriptor)
-            for descriptor in self._get_descriptors(service_type, key=key)
-        )
+        with self._resolution_context():
+            return tuple(
+                self._get_from_descriptor(descriptor)
+                for descriptor in self._get_descriptors(service_type, key=key)
+            )
+
+    def _ensure_open(self) -> None:
+        if self._closing or self._closed:
+            raise ProviderClosedError()
+
+    @contextmanager
+    def _resolution_context(self) -> Generator[None]:
+        state = self._resolution_state
+        with self._lifecycle:
+            if state.activity_depth == 0:
+                self._ensure_open()
+            self._active_resolutions += 1
+            state.activity_depth += 1
+        try:
+            yield
+        finally:
+            with self._lifecycle:
+                state.activity_depth -= 1
+                self._active_resolutions -= 1
+                if self._active_resolutions == 0:
+                    self._lifecycle.notify_all()
 
     def _get_descriptor(
         self, service_type: type[T], *, key: Hashable | None = None
@@ -87,9 +123,15 @@ class ServiceProvider:
             cache_key = id(descriptor)
             with self._singleton_lock:
                 if cache_key not in self._singleton_instances:
-                    self._singleton_instances[cache_key] = self._create_from_descriptor(
-                        descriptor, resolver=self
-                    )
+                    instance = self._create_from_descriptor(descriptor, resolver=self)
+                    self._singleton_instances[cache_key] = instance
+                    instance_id = id(instance)
+                    if (
+                        isinstance(instance, SupportsClose)
+                        and instance_id not in self._owned_singleton_ids
+                    ):
+                        self._owned_singletons.append(instance)
+                        self._owned_singleton_ids.add(instance_id)
                 return cast(T, self._singleton_instances[cache_key])
 
         if descriptor.lifetime is ServiceLifetime.TRANSIENT:
@@ -112,7 +154,7 @@ class ServiceProvider:
                     )
                 )
 
-        stack.append(cast(ServiceDescriptor[object], descriptor))
+        stack.append(descriptor)
         try:
             if descriptor.factory is not None:
                 return descriptor.factory(resolver)
@@ -175,6 +217,49 @@ class ServiceProvider:
 
         return implementation_type(**kwargs)
 
+    def close(self) -> None:
+        with self._lifecycle:
+            if self._closed:
+                return
+            if self._closing:
+                while not self._closed:
+                    self._lifecycle.wait()
+                return
+            if self._resolution_state.activity_depth > 0:
+                raise RuntimeError(
+                    "Cannot close the service provider during service resolution."
+                )
+            self._closing = True
+            while self._active_resolutions > 0:
+                self._lifecycle.wait()
+
+        with self._singleton_lock:
+            instances = tuple(reversed(self._owned_singletons))
+            self._owned_singletons.clear()
+            self._owned_singleton_ids.clear()
+            self._singleton_instances.clear()
+
+        try:
+            close_instances(instances)
+        finally:
+            with self._lifecycle:
+                self._closed = True
+                self._closing = False
+                self._lifecycle.notify_all()
+
+    def __enter__(self) -> ServiceProvider:
+        with self._lifecycle:
+            self._ensure_open()
+            return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
 
 def _is_type(value: object) -> TypeGuard[type[object]]:
     return isinstance(value, type)
@@ -183,3 +268,4 @@ def _is_type(value: object) -> TypeGuard[type[object]]:
 class _ResolutionState(local):
     def __init__(self) -> None:
         self.stack: list[ServiceDescriptor[object]] = []
+        self.activity_depth = 0

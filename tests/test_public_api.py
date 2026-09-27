@@ -4,6 +4,7 @@ import pydico.descriptors as descriptors_module
 import pydico.exceptions as exceptions_module
 import pydico.identifiers as identifiers_module
 import pydico.injection as injection_module
+import pydico.lifecycle as lifecycle_module
 import pydico.lifetimes as lifetimes_module
 import pydico.provider as provider_module
 import pydico.resolver as resolver_module
@@ -12,11 +13,13 @@ from pydico import (
     AbstractTypeRegistrationError,
     CircularDependencyError,
     ConflictingRegistrationError,
+    DisposalError,
     ImplementationTypeMismatchError,
     InjectionError,
     InstanceTypeMismatchError,
     MissingTypeAnnotationError,
     NoActiveScopeError,
+    ProviderClosedError,
     PydicoError,
     RegistrationError,
     ResolutionError,
@@ -30,6 +33,7 @@ from pydico import (
     ServiceProvider,
     ServiceResolver,
     ServiceScope,
+    SupportsClose,
     UnsupportedTypeAnnotationError,
     inject,
 )
@@ -40,12 +44,14 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
         "AbstractTypeRegistrationError",
         "CircularDependencyError",
         "ConflictingRegistrationError",
+        "DisposalError",
         "ImplementationTypeMismatchError",
         "InjectionError",
         "InstanceTypeMismatchError",
         "MissingTypeAnnotationError",
         "NoActiveScopeError",
         "PydicoError",
+        "ProviderClosedError",
         "RegistrationError",
         "ResolutionError",
         "ScopeClosedError",
@@ -58,6 +64,7 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
         "ServiceProvider",
         "ServiceResolver",
         "ServiceScope",
+        "SupportsClose",
         "UnsupportedTypeAnnotationError",
         "inject",
     }
@@ -74,18 +81,21 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     assert ServiceProvider is provider_module.ServiceProvider
     assert ServiceResolver is resolver_module.ServiceResolver
     assert ServiceScope is scope_module.ServiceScope
+    assert SupportsClose is lifecycle_module.SupportsClose
     assert inject is injection_module.inject
 
     error_types = {
         AbstractTypeRegistrationError,
         CircularDependencyError,
         ConflictingRegistrationError,
+        DisposalError,
         ImplementationTypeMismatchError,
         InjectionError,
         InstanceTypeMismatchError,
         MissingTypeAnnotationError,
         NoActiveScopeError,
         PydicoError,
+        ProviderClosedError,
         RegistrationError,
         ResolutionError,
         ScopeClosedError,

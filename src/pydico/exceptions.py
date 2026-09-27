@@ -79,6 +79,13 @@ class ResolutionError(PydicoError):
     """A service could not be resolved by pydico."""
 
 
+class ProviderClosedError(ResolutionError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The service provider is closed and can no longer resolve services."
+        )
+
+
 class ScopeClosedError(ResolutionError):
     def __init__(self) -> None:
         super().__init__(
@@ -165,4 +172,14 @@ class UnsupportedTypeAnnotationError(InjectionError):
         super().__init__(
             f"Parameter {parameter_name!r} of {_name(target)} uses unsupported "
             f"annotation {annotation!r}."
+        )
+
+
+class DisposalError(PydicoError):
+    def __init__(self, errors: Sequence[Exception]) -> None:
+        self.errors = tuple(errors)
+        count = len(self.errors)
+        super().__init__(
+            f"Failed to close {count} container-owned service"
+            f"{'s' if count != 1 else ''}."
         )
