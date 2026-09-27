@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import CircularDependencyError
+from pydico.identifiers import ServiceIdentifier
 from pydico.lifetimes import ServiceLifetime
 
 
@@ -52,17 +51,9 @@ def test_service_descriptor_preserves_registration_metadata() -> None:
 
 
 def test_circular_dependency_error_exposes_chain_and_message() -> None:
-    first: ServiceDescriptor[object] = ServiceDescriptor(
-        service_type=Service,
-        lifetime=ServiceLifetime.TRANSIENT,
-        key="first",
-    )
-    second: ServiceDescriptor[object] = ServiceDescriptor(
-        service_type=OtherService,
-        lifetime=ServiceLifetime.TRANSIENT,
-    )
-
-    chain = cast(tuple[ServiceDescriptor[object], ...], (first, second, first))
+    first = ServiceIdentifier(Service, key="first")
+    second = ServiceIdentifier(OtherService)
+    chain = (first, second, first)
     error = CircularDependencyError(chain)
 
     assert error.chain == (first, second, first)

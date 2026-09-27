@@ -7,7 +7,13 @@ from threading import RLock
 from typing import Any, TypeVar, cast, get_type_hints, overload
 
 from pydico._context import current_resolver
-from pydico.exceptions import InjectionError
+from pydico.exceptions import (
+    InjectionError,
+    MissingTypeAnnotationError,
+    NoActiveScopeError,
+    ServiceNotRegisteredError,
+    UnsupportedTypeAnnotationError,
+)
 from pydico.resolver import ServiceResolver
 
 R = TypeVar("R")
@@ -71,7 +77,7 @@ def _decorate(
         if missing:
             active = resolver if resolver is not None else current_resolver()
             if active is None:
-                raise InjectionError(f"{name}: no active resolver for injection")
+                raise NoActiveScopeError(function)
             with hints_lock:
                 if hints is None:
                     try:
@@ -84,17 +90,20 @@ def _decorate(
             types: list[type[Any]] = []
             for parameter in missing:
                 annotation = resolved_hints.get(parameter.name)
+                if annotation is None:
+                    raise MissingTypeAnnotationError(function, parameter.name)
                 if not isinstance(annotation, type) or annotation is Any:
-                    raise InjectionError(
-                        f"{name}: parameter '{parameter.name}' requires a class annotation"
+                    raise UnsupportedTypeAnnotationError(
+                        function, parameter.name, annotation
                     )
                 types.append(annotation)
             for parameter, service_type in zip(missing, types):
                 value = active.get_service(service_type)
                 if value is None:
-                    raise InjectionError(
-                        f"{name}: no service registered for parameter "
-                        f"'{parameter.name}' ({service_type.__qualname__})"
+                    raise ServiceNotRegisteredError(
+                        service_type,
+                        target=function,
+                        parameter_name=parameter.name,
                     )
                 bound.arguments[parameter.name] = value
         signature.bind(*bound.args, **bound.kwargs)

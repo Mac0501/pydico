@@ -6,6 +6,12 @@ from abc import ABC, abstractmethod
 import pytest
 
 from pydico.collection import ServiceCollection
+from pydico.exceptions import (
+    AbstractTypeRegistrationError,
+    ConflictingRegistrationError,
+    ImplementationTypeMismatchError,
+    InstanceTypeMismatchError,
+)
 from pydico.lifetimes import ServiceLifetime
 from pydico.resolver import ServiceResolver
 
@@ -81,7 +87,7 @@ def test_instance_registration_returns_existing_instance() -> None:
 
 
 def test_registration_rejects_implementation_and_factory_together() -> None:
-    with pytest.raises(ValueError, match="Use only one"):
+    with pytest.raises(ConflictingRegistrationError, match="multiple construction"):
         ServiceCollection()._add_descriptor(  # pyright: ignore[reportPrivateUsage]
             service_type=Service,
             lifetime=ServiceLifetime.TRANSIENT,
@@ -91,7 +97,7 @@ def test_registration_rejects_implementation_and_factory_together() -> None:
 
 
 def test_registration_rejects_implementation_and_instance_together() -> None:
-    with pytest.raises(ValueError, match="Use only one"):
+    with pytest.raises(ConflictingRegistrationError, match="multiple construction"):
         ServiceCollection()._add_descriptor(  # pyright: ignore[reportPrivateUsage]
             service_type=Service,
             lifetime=ServiceLifetime.TRANSIENT,
@@ -101,7 +107,7 @@ def test_registration_rejects_implementation_and_instance_together() -> None:
 
 
 def test_registration_rejects_factory_and_instance_together() -> None:
-    with pytest.raises(ValueError, match="Use only one"):
+    with pytest.raises(ConflictingRegistrationError, match="multiple construction"):
         ServiceCollection()._add_descriptor(  # pyright: ignore[reportPrivateUsage]
             service_type=Service,
             lifetime=ServiceLifetime.TRANSIENT,
@@ -111,17 +117,17 @@ def test_registration_rejects_factory_and_instance_together() -> None:
 
 
 def test_abstract_service_requires_explicit_construction_strategy() -> None:
-    with pytest.raises(TypeError, match="abstract"):
+    with pytest.raises(AbstractTypeRegistrationError, match="Abstract service"):
         ServiceCollection().add_transient(AbstractService)
 
 
 def test_abstract_implementation_is_rejected() -> None:
-    with pytest.raises(ValueError, match="cannot be abstract"):
+    with pytest.raises(AbstractTypeRegistrationError, match="is abstract"):
         ServiceCollection().add_transient(Service, AbstractImplementation)
 
 
 def test_implementation_must_subclass_service_type() -> None:
-    with pytest.raises(ValueError, match="must be a subclass"):
+    with pytest.raises(ImplementationTypeMismatchError, match="cannot be registered"):
         ServiceCollection().add_transient(
             Service, AnotherService
         )  # pyright: ignore[reportArgumentType]
@@ -129,8 +135,8 @@ def test_implementation_must_subclass_service_type() -> None:
 
 def test_instance_must_match_service_type() -> None:
     with pytest.raises(
-        ValueError,
-        match=re.escape("must be an instance of service type"),
+        InstanceTypeMismatchError,
+        match=re.escape("cannot be registered for service"),
     ):
         ServiceCollection().add_instance(
             Service, AnotherService()

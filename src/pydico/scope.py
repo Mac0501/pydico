@@ -31,7 +31,7 @@ class ServiceScope:
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise ScopeClosedError("This service scope is closed.")
+            raise ScopeClosedError()
 
     def get_service(
         self, service_type: type[T], *, key: Hashable | None = None

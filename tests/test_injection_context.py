@@ -8,7 +8,7 @@ import pytest
 from pydico import (
     InjectionError,
     ScopeClosedError,
-    ScopedResolutionError,
+    ScopeRequiredError,
     ServiceCollection,
     inject,
 )
@@ -25,7 +25,7 @@ def resolve(dependency: Dependency) -> Dependency:
 
 def test_nested_context_restoration_on_exception_and_scope_isolation() -> None:
     provider = ServiceCollection().add_scoped(Dependency).build_service_provider()
-    with pytest.raises(InjectionError, match="no active resolver"):
+    with pytest.raises(InjectionError, match="no service scope is active"):
         resolve()
     with provider.create_scope() as first:
         original = resolve()
@@ -36,7 +36,7 @@ def test_nested_context_restoration_on_exception_and_scope_isolation() -> None:
                 raise ValueError("body")
         assert resolve() is original
         assert first.get_service(Dependency) is original
-    with pytest.raises(InjectionError, match="no active resolver"):
+    with pytest.raises(InjectionError, match="no service scope is active"):
         resolve()
 
 
@@ -44,7 +44,7 @@ def test_creating_scope_without_entering_it_does_not_activate_it() -> None:
     provider = ServiceCollection().add_scoped(Dependency).build_service_provider()
     scope = provider.create_scope()
     try:
-        with pytest.raises(InjectionError, match="no active resolver"):
+        with pytest.raises(InjectionError, match="no service scope is active"):
             resolve()
     finally:
         scope.close()
@@ -54,7 +54,7 @@ def test_explicit_resolver_precedes_context_and_closed_scope_is_respected() -> N
     provider = ServiceCollection().add_scoped(Dependency).build_service_provider()
     with provider.create_scope() as scope:
         root_bound = inject(provider)(inspect.unwrap(resolve))
-        with pytest.raises(ScopedResolutionError):
+        with pytest.raises(ScopeRequiredError):
             root_bound()
         scope_bound = inject(scope)(inspect.unwrap(resolve))
         assert scope_bound() is resolve()
@@ -69,13 +69,13 @@ def test_thread_contexts_are_independent() -> None:
     barrier = Barrier(4)
 
     def work():
-        with pytest.raises(InjectionError, match="no active resolver"):
+        with pytest.raises(InjectionError, match="no service scope is active"):
             resolve()
         with provider.create_scope() as scope:
             barrier.wait(timeout=5)
             result = resolve()
             assert result is scope.get_service(Dependency)
-        with pytest.raises(InjectionError, match="no active resolver"):
+        with pytest.raises(InjectionError, match="no service scope is active"):
             resolve()
         return result
 
@@ -108,5 +108,5 @@ def test_async_tasks_resolve_at_execution_and_preserve_context() -> None:
 
     first, second = asyncio.run(run())
     assert first is not second
-    with pytest.raises(InjectionError, match="no active resolver"):
+    with pytest.raises(InjectionError, match="no service scope is active"):
         resolve()

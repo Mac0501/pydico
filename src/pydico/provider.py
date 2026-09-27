@@ -6,7 +6,16 @@ from threading import RLock, local
 from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast, get_type_hints
 
 from pydico.descriptors import ServiceDescriptor
-from pydico.exceptions import CircularDependencyError, ScopedResolutionError
+from pydico.exceptions import (
+    CircularDependencyError,
+    InjectionError,
+    MissingTypeAnnotationError,
+    ResolutionError,
+    ScopeRequiredError,
+    ServiceNotRegisteredError,
+    UnsupportedTypeAnnotationError,
+)
+from pydico.identifiers import ServiceIdentifier
 from pydico.lifetimes import ServiceLifetime
 from pydico.resolver import ServiceResolver
 
@@ -87,9 +96,7 @@ class ServiceProvider:
             return self._create_from_descriptor(descriptor, resolver=scope or self)
 
         if scope is None:
-            raise ScopedResolutionError(
-                f"Scoped service {descriptor.service_type.__qualname__} requires an active scope. Use provider.create_scope()."
-            )
+            raise ScopeRequiredError(descriptor.service_type, descriptor.key)
         return scope._get_scoped_instance(descriptor)
 
     def _create_from_descriptor(
@@ -98,7 +105,12 @@ class ServiceProvider:
         stack = self._resolution_state.stack
         for index, active_descriptor in enumerate(stack):
             if active_descriptor is descriptor:
-                raise CircularDependencyError((*stack[index:], active_descriptor))
+                cycle = (*stack[index:], active_descriptor)
+                raise CircularDependencyError(
+                    tuple(
+                        ServiceIdentifier(item.service_type, item.key) for item in cycle
+                    )
+                )
 
         stack.append(cast(ServiceDescriptor[object], descriptor))
         try:
@@ -106,7 +118,7 @@ class ServiceProvider:
                 return descriptor.factory(resolver)
 
             if descriptor.implementation_type is None:
-                raise TypeError(
+                raise ResolutionError(
                     f"Service type {descriptor.service_type} has no implementation, factory, or instance."
                 )
 
@@ -120,7 +132,13 @@ class ServiceProvider:
         self, implementation_type: type[T], *, resolver: ServiceResolver
     ) -> T:
         signature = inspect.signature(implementation_type.__init__)
-        type_hints = get_type_hints(implementation_type.__init__)
+        try:
+            type_hints = get_type_hints(implementation_type.__init__)
+        except Exception as error:
+            raise InjectionError(
+                f"Cannot resolve type annotations for "
+                f"{implementation_type.__qualname__}."
+            ) from error
         kwargs: dict[str, object] = {}
 
         for name, parameter in signature.parameters.items():
@@ -138,19 +156,19 @@ class ServiceProvider:
 
             annotation = type_hints.get(name)
             if annotation is None:
-                raise TypeError(
-                    f"Cannot resolve parameter {name!r} for {implementation_type.__name__}: missing type annotation."
-                )
+                raise MissingTypeAnnotationError(implementation_type, name)
 
             if not _is_type(annotation):
-                raise TypeError(
-                    f"Cannot resolve parameter {name!r} for {implementation_type.__name__}: annotation must be a type."
+                raise UnsupportedTypeAnnotationError(
+                    implementation_type, name, annotation
                 )
 
             dependency = resolver.get_service(annotation)
             if dependency is None:
-                raise LookupError(
-                    f"No service registered for dependency {annotation} required by {implementation_type.__name__}."
+                raise ServiceNotRegisteredError(
+                    annotation,
+                    target=implementation_type,
+                    parameter_name=name,
                 )
 
             kwargs[name] = dependency

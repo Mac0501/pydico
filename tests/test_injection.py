@@ -5,7 +5,13 @@ import pytest
 
 from pydico import inject
 from pydico.collection import ServiceCollection
-from pydico.exceptions import InjectionError
+from pydico.exceptions import (
+    InjectionError,
+    MissingTypeAnnotationError,
+    NoActiveScopeError,
+    ServiceNotRegisteredError,
+    UnsupportedTypeAnnotationError,
+)
 
 
 class Dependency:
@@ -114,7 +120,12 @@ def test_unsupported_or_missing_annotations(annotation: object) -> None:
     if annotation is not None:
         action.__annotations__["dependency"] = annotation
     wrapped = inject(ServiceCollection().build_service_provider())(action)
-    with pytest.raises(InjectionError, match="dependency.*class annotation"):
+    error_type = (
+        MissingTypeAnnotationError
+        if annotation is None
+        else UnsupportedTypeAnnotationError
+    )
+    with pytest.raises(error_type, match="dependency"):
         wrapped()
     assert wrapped("explicit") == "explicit"
 
@@ -124,12 +135,14 @@ def test_missing_resolver_and_registration() -> None:
     def action(dependency: Dependency):
         return dependency
 
-    with pytest.raises(InjectionError, match="no active resolver"):
+    with pytest.raises(NoActiveScopeError, match="no service scope is active"):
         action()
     wrapped = inject(ServiceCollection().build_service_provider())(
         inspect.unwrap(action)
     )
-    with pytest.raises(InjectionError, match="no service registered.*dependency"):
+    with pytest.raises(
+        ServiceNotRegisteredError, match="No registration was found.*dependency"
+    ):
         wrapped()
 
 

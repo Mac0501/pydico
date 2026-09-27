@@ -4,6 +4,12 @@ from threading import RLock
 from typing import Self, TypeVar, overload
 
 from pydico.descriptors import ServiceDescriptor
+from pydico.exceptions import (
+    AbstractTypeRegistrationError,
+    ConflictingRegistrationError,
+    ImplementationTypeMismatchError,
+    InstanceTypeMismatchError,
+)
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
@@ -206,32 +212,28 @@ class ServiceCollection:
         instance: T | None,
     ) -> None:
 
-        if (
-            sum(value is not None for value in (implementation_type, factory, instance))
-            > 1
-        ):
-            raise ValueError(
-                "Use only one of implementation_type, factory, or instance."
+        strategies = tuple(
+            name
+            for name, value in (
+                ("implementation_type", implementation_type),
+                ("factory", factory),
+                ("instance", instance),
             )
+            if value is not None
+        )
+        if len(strategies) > 1:
+            raise ConflictingRegistrationError(service_type, strategies)
 
         if implementation_type is not None:
             if isabstract(implementation_type):
-                raise ValueError(
-                    f"Implementation type {implementation_type} cannot be abstract."
-                )
+                raise AbstractTypeRegistrationError(service_type, implementation_type)
 
             if not issubclass(implementation_type, service_type):
-                raise ValueError(
-                    f"Implementation type {implementation_type} must be a subclass of service type {service_type}."
-                )
+                raise ImplementationTypeMismatchError(service_type, implementation_type)
 
         if instance is not None and not isinstance(instance, service_type):
-            raise ValueError(
-                f"Instance {instance} must be an instance of service type {service_type}."
-            )
+            raise InstanceTypeMismatchError(service_type, type(instance))
 
         if implementation_type is None and factory is None and instance is None:
             if isabstract(service_type):
-                raise TypeError(
-                    f"Service type {service_type} is abstract and needs an implementation, factory, or instance."
-                )
+                raise AbstractTypeRegistrationError(service_type)

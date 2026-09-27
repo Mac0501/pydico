@@ -7,7 +7,7 @@ from pydico.collection import ServiceCollection
 from pydico.exceptions import (
     CircularDependencyError,
     ScopeClosedError,
-    ScopedResolutionError,
+    ScopeRequiredError,
 )
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
@@ -70,7 +70,7 @@ def test_keys_and_multiple_registrations_have_independent_caches() -> None:
         assert scope.get_service(Dependency, key="key") not in values
         assert scope.get_services(str) == ()
         assert scope.get_service(str) is None
-    with pytest.raises(ScopedResolutionError):
+    with pytest.raises(ScopeRequiredError):
         provider.get_services(Dependency)
 
 
@@ -105,7 +105,7 @@ def test_singleton_cannot_capture_scoped_service(indirect: bool) -> None:
         return "invalid"
 
     provider = services.add_singleton(str, factory=factory).build_service_provider()
-    with provider.create_scope() as scope, pytest.raises(ScopedResolutionError):
+    with provider.create_scope() as scope, pytest.raises(ScopeRequiredError):
         scope.get_service(str)
 
 

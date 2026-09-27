@@ -37,13 +37,14 @@ uv run pyright
 - [x] Define `__all__` as the public compatibility boundary.
 - [x] Update examples and add public-import contract tests.
 
-## Phase 2 - Error Model
+## Phase 2 - Error Model (complete)
 
-- Introduce `PydicoError` as the common base exception.
-- Separate registration, resolution, injection, closed-resource, and missing
+- [x] Introduce `PydicoError` as the common base exception.
+- [x] Separate registration, resolution, injection, closed-resource, and missing
   service errors.
-- Attach service type, key, parameter, and resolution-chain context where useful.
-- Replace incidental built-in exceptions in public resolution paths.
+- [x] Attach service type, key, parameter, and resolution-chain context where
+  useful.
+- [x] Replace incidental built-in exceptions in public resolution paths.
 
 ## Phase 3 - Resource Lifecycle
 

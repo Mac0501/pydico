@@ -144,7 +144,7 @@ with provider.create_scope() as first:
         assert db is not second.get_service(DbContext)
 ```
 
-Resolving a scoped service from the root raises `ScopedResolutionError`. This is
+Resolving a scoped service from the root raises `ScopeRequiredError`. This is
 always enforced, without a validation option. Transient dependencies inherit the
 current resolution context. Singletons are always constructed in the root
 context, even when first requested from a scope, so a singleton cannot resolve
@@ -253,6 +253,30 @@ except CircularDependencyError as error:
 
 The stack is local to each thread, so parallel resolutions of the same transient
 registration do not look like false cycles.
+
+## Error Handling
+
+All errors raised by the dependency-injection system derive from `PydicoError`.
+Invalid registrations derive from `RegistrationError`; failures while resolving
+or injecting services derive from `ResolutionError`.
+
+Common concrete errors include:
+
+- `ConflictingRegistrationError` for multiple construction strategies;
+- `ImplementationTypeMismatchError` and `InstanceTypeMismatchError` for
+  incompatible registrations;
+- `AbstractTypeRegistrationError` when an abstract type would be instantiated;
+- `ScopeRequiredError` and `ScopeClosedError` for invalid scope usage;
+- `ServiceNotRegisteredError` when a required injected service is missing;
+- `NoActiveScopeError` when `@inject` is called outside an active scope;
+- `MissingTypeAnnotationError` and `UnsupportedTypeAnnotationError` for
+  parameters that cannot be injected;
+- `CircularDependencyError` for constructor or factory cycles.
+
+The exceptions expose structured attributes such as `service_type`, `key`,
+`target`, `parameter_name`, or `chain`. `get_service()` still returns
+`None` when an optional lookup has no registration. Exceptions raised inside
+user factories, constructors, and decorated function bodies propagate unchanged.
 
 ## Current Limits
 

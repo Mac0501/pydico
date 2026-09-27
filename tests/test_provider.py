@@ -4,7 +4,12 @@ import pytest
 
 from pydico.collection import ServiceCollection
 from pydico.descriptors import ServiceDescriptor
-from pydico.exceptions import ScopedResolutionError
+from pydico.exceptions import (
+    MissingTypeAnnotationError,
+    ScopeRequiredError,
+    ServiceNotRegisteredError,
+    UnsupportedTypeAnnotationError,
+)
 from pydico.lifetimes import ServiceLifetime
 from pydico.provider import ServiceProvider
 from pydico.resolver import ServiceResolver
@@ -252,7 +257,7 @@ def test_missing_constructor_annotation_raises_type_error() -> None:
         .build_service_provider()
     )
 
-    with pytest.raises(TypeError, match="missing type annotation"):
+    with pytest.raises(MissingTypeAnnotationError, match="requires a type annotation"):
         provider.get_service(ConsumerWithMissingAnnotation)
 
 
@@ -263,7 +268,7 @@ def test_unsupported_constructor_annotation_raises_type_error() -> None:
         .build_service_provider()
     )
 
-    with pytest.raises(TypeError, match="annotation must be a type"):
+    with pytest.raises(UnsupportedTypeAnnotationError, match="unsupported annotation"):
         provider.get_service(ConsumerWithUnsupportedAnnotation)
 
 
@@ -274,7 +279,7 @@ def test_unregistered_constructor_dependency_raises_lookup_error() -> None:
         .build_service_provider()
     )
 
-    with pytest.raises(LookupError, match="No service registered"):
+    with pytest.raises(ServiceNotRegisteredError, match="No registration was found"):
         provider.get_service(ConsumerWithUnregisteredDependency)
 
 
@@ -286,5 +291,5 @@ def test_scoped_lifetime_requires_scope() -> None:
     )
     provider = ServiceProvider((descriptor,))
 
-    with pytest.raises(ScopedResolutionError, match="requires an active scope"):
+    with pytest.raises(ScopeRequiredError, match="requires an active service scope"):
         provider.get_service(Service)
