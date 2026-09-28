@@ -4,6 +4,7 @@ from pydico.collection import ServiceCollection
 from pydico.descriptors import ServiceDescriptor
 from pydico.exceptions import (
     AbstractTypeRegistrationError,
+    AsyncDisposalRequiredError,
     CircularDependencyError,
     CloseDuringResolutionError,
     CollectionMaterializationError,
@@ -26,7 +27,7 @@ from pydico.exceptions import (
 )
 from pydico.identifiers import ServiceIdentifier
 from pydico.injection import inject
-from pydico.lifecycle import SupportsClose
+from pydico.lifecycle import SupportsAsyncClose, SupportsClose
 from pydico.lifetimes import ServiceLifetime
 from pydico.metadata import InjectKey
 from pydico.provider import ServiceProvider
@@ -36,6 +37,7 @@ from pydico.validation import ServiceProviderValidationError, ValidationIssue
 
 __all__ = [
     "AbstractTypeRegistrationError",
+    "AsyncDisposalRequiredError",
     "CircularDependencyError",
     "CloseDuringResolutionError",
     "CollectionMaterializationError",
@@ -64,6 +66,7 @@ __all__ = [
     "ServiceResolver",
     "ServiceScope",
     "SupportsClose",
+    "SupportsAsyncClose",
     "UnsupportedTypeAnnotationError",
     "ValidationIssue",
     "inject",

@@ -13,6 +13,7 @@ import pydico.scope as scope_module
 import pydico.validation as validation_module
 from pydico import (
     AbstractTypeRegistrationError,
+    AsyncDisposalRequiredError,
     CircularDependencyError,
     CloseDuringResolutionError,
     CollectionMaterializationError,
@@ -40,6 +41,7 @@ from pydico import (
     ServiceProviderValidationError,
     ServiceResolver,
     ServiceScope,
+    SupportsAsyncClose,
     SupportsClose,
     UnsupportedTypeAnnotationError,
     ValidationIssue,
@@ -50,6 +52,7 @@ from pydico import (
 def test_public_api_exports_are_explicit_and_complete() -> None:
     expected = {
         "AbstractTypeRegistrationError",
+        "AsyncDisposalRequiredError",
         "CircularDependencyError",
         "CloseDuringResolutionError",
         "CollectionMaterializationError",
@@ -78,6 +81,7 @@ def test_public_api_exports_are_explicit_and_complete() -> None:
         "ServiceResolver",
         "ServiceScope",
         "SupportsClose",
+        "SupportsAsyncClose",
         "UnsupportedTypeAnnotationError",
         "ValidationIssue",
         "inject",
@@ -102,10 +106,12 @@ def test_public_symbols_reference_the_implemented_types() -> None:
     assert ServiceResolver is resolver_module.ServiceResolver
     assert ServiceScope is scope_module.ServiceScope
     assert SupportsClose is lifecycle_module.SupportsClose
+    assert SupportsAsyncClose is lifecycle_module.SupportsAsyncClose
     assert inject is injection_module.inject
 
     error_types = {
         AbstractTypeRegistrationError,
+        AsyncDisposalRequiredError,
         CircularDependencyError,
         CloseDuringResolutionError,
         CollectionMaterializationError,

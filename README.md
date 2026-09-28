@@ -1,28 +1,50 @@
 # pydico
 
-`pydico` is a small experimental dependency-injection library for Python 3.13+.
-The current design is intentionally compact: registrations are collected in a
-`ServiceCollection`, and a read-only `ServiceProvider` resolves services from a
-snapshot of those registrations.
+Dependency injection for Python 3.13+, with constructor injection, scoped
+services, keyed registrations, collection injection, and synchronous or
+asynchronous resource cleanup. There are no runtime dependencies.
 
-The project is still being shaped. Breaking API changes are expected while the
-core model is refined.
+The library is experimental. Its public API may change.
 
-The implementation roadmap is maintained in [`ROADMAP.md`](ROADMAP.md).
+## Contents
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Registering services](#registering-services)
+- [Resolving services](#resolving-services)
+- [Lifetimes and scopes](#lifetimes-and-scopes)
+- [Function injection](#function-injection)
+- [Annotation rules](#annotation-rules)
+- [Keyed services](#keyed-services)
+- [Collections](#collections)
+- [Resource cleanup](#resource-cleanup)
+- [Build-time validation](#build-time-validation)
+- [Errors](#errors)
+- [Concurrency](#concurrency)
+- [Public API and typing](#public-api-and-typing)
+- [Development](#development)
 
 ## Installation
 
-```shell
-uv pip install pydico
-```
-
-or:
+Requires Python 3.13 or newer. From a checkout of this repository:
 
 ```shell
-pip install pydico
+python -m pip install .
 ```
 
-## Quick Start
+For local development with the project's development dependencies:
+
+```shell
+uv sync
+```
+
+The Python examples below are independent scripts unless identified as a
+signature reference.
+
+## Quick start
+
+A service declares its dependencies as constructor parameters. Register those
+types, build a provider, and ask it for the outermost service:
 
 ```python
 from pydico import ServiceCollection
@@ -41,452 +63,613 @@ class ReportService:
         self.logger.log("Report created")
 
 
-provider = (
+services = (
     ServiceCollection()
     .add_singleton(Logger)
     .add_transient(ReportService)
-    .build_service_provider()
 )
 
-service = provider.get_service(ReportService)
-assert service is not None
-service.create()
+with services.build_service_provider(validate=True) as provider:
+    report = provider.get_service(ReportService)
+    assert report is not None
+    report.create()
 ```
 
-Constructor dependencies must be registered explicitly. `pydico` inspects the
-constructor of the registered implementation type and resolves required
-annotated parameters from the same provider.
+`ServiceCollection` describes how services are created. Building a
+`ServiceProvider` takes a snapshot of those registrations; later changes to the
+collection do not affect that provider. Services are created on demand, not when
+the provider is built.
 
-## Registrations
+Constructor injection needs no decorator. Dependencies must be registered
+explicitly; an unregistered class is not automatically constructed.
 
-`ServiceCollection` supports the following registrations:
+## Registering services
 
-```python
-collection = ServiceCollection()
+Each lifetime method accepts either the service class itself, a concrete
+implementation class, or a factory. Registration methods return the collection
+so calls can be chained.
 
-collection.add_transient(ReportService)
-collection.add_scoped(DbContext)
-collection.add_singleton(Logger)
-collection.add_instance(Settings, Settings(environment="dev"))
-```
+Signature reference (`T` is the requested service type):
 
-You can also register an implementation type for a service type:
+| Method | Meaning |
+| --- | --- |
+| `add_transient(T, implementation_type=None, *, factory=None, key=None)` | Create on every resolution |
+| `add_scoped(T, implementation_type=None, *, factory=None, key=None)` | Cache within each scope |
+| `add_singleton(T, implementation_type=None, *, factory=None, key=None)` | Cache within each provider |
+| `add_instance(T, instance, *, key=None)` | Return an existing caller-owned object |
+| `build_service_provider(*, validate=False)` | Build an independent provider |
 
-```python
-collection.add_singleton(Logger, ConsoleLogger)
-```
+Do not specify an implementation and a factory together.
 
-Or use a factory when construction needs custom logic:
+### Interfaces and implementations
 
-```python
-collection.add_singleton(
-    ReportService,
-    factory=lambda provider: ReportService(provider.get_service(Logger)),
-)
-```
-
-For multiple registrations of the same service type, `get_service()` returns the
-last matching registration and `get_services()` returns all matches in
-registration order.
-
-## Static Typing
-
-Registration and resolution are typed for concrete classes, base classes, and
-abstract base classes:
+Use a base class or an abstract base class as the service type. The
+implementation must inherit from it and must not be abstract.
 
 ```python
 from abc import ABC, abstractmethod
-from typing import assert_type
 
 from pydico import ServiceCollection
 
 
 class Repository(ABC):
     @abstractmethod
-    def save(self) -> None:
+    def read(self) -> str:
         ...
 
 
-class SqlRepository(Repository):
-    def save(self) -> None:
-        ...
+class MemoryRepository(Repository):
+    def read(self) -> str:
+        return "stored value"
 
 
-provider = (
+services = ServiceCollection().add_scoped(Repository, MemoryRepository)
+
+with services.build_service_provider() as provider:
+    with provider.create_scope() as scope:
+        repository = scope.get_service(Repository)
+        assert repository is not None
+        assert repository.read() == "stored value"
+        assert scope.get_service(MemoryRepository) is None
+```
+
+Lookup uses the registered service type, not an automatic search for subclasses.
+Registering `Repository` does not also register `MemoryRepository`.
+
+### Instances and factories
+
+Use an instance for configuration or an object managed by your application.
+Use a factory when construction requires values or custom logic.
+
+```python
+from dataclasses import dataclass
+
+from pydico import ServiceCollection, ServiceResolver
+
+
+@dataclass(frozen=True)
+class Settings:
+    prefix: str
+
+
+class Greeter:
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+
+    def greet(self) -> str:
+        return f"{self.prefix}, world"
+
+
+def create_greeter(resolver: ServiceResolver) -> Greeter:
+    settings = resolver.get_service(Settings)
+    assert settings is not None
+    return Greeter(settings.prefix)
+
+
+services = (
     ServiceCollection()
-    .add_scoped(Repository, SqlRepository)
-    .build_service_provider()
+    .add_instance(Settings, Settings(prefix="Hello"))
+    .add_transient(Greeter, factory=create_greeter)
 )
 
-assert_type(provider.get_service(Repository), Repository | None)
+with services.build_service_provider() as provider:
+    greeter = provider.get_service(Greeter)
+    assert greeter is not None
+    assert greeter.greet() == "Hello, world"
 ```
 
-Factories may return the registered service type or a concrete subtype.
-`ServiceDescriptor` is covariant, so a descriptor for a concrete implementation
-can be used where a descriptor for its base service is expected. Runtime
-validation remains active when static checking is bypassed.
+A factory receives one resolver; its parameters are not automatically injected.
+It must synchronously return a valid service instance, never a coroutine or
+`None`. Factory results are not runtime-checked against the service type, so
+annotate and type-check your factories. Constructor and factory exceptions
+propagate unchanged.
 
-Python type checkers can infer the common base `object` for two unrelated class
-arguments in a direct registration call. pydico therefore keeps runtime
-`issubclass()` and `isinstance()` validation as the authoritative safety net.
-Structural `Protocol` service types are not part of the guaranteed typing
-contract yet; use concrete classes or ABCs.
+The factory runs in the service's lifetime context: singleton factories receive
+the root provider, scoped factories receive their scope, and transient factories
+receive the resolver through which they are being constructed.
 
-## Keys
+## Resolving services
 
-Registrations can be separated with a hashable key:
+Providers and scopes both expose:
 
-```python
-collection = (
-    ServiceCollection()
-    .add_singleton(Logger, ConsoleLogger, key="console")
-    .add_singleton(Logger, FileLogger, key="file")
-)
+| Call | Result |
+| --- | --- |
+| `get_service(T, *, key=None)` | Last matching registration, or `None` if absent |
+| `get_services(T, *, key=None)` | Tuple of all matching registrations in registration order; empty if absent |
 
-provider = collection.build_service_provider()
-console_logger = provider.get_service(Logger, key="console")
-```
+A missing **direct lookup** returns `None`. A missing **required injected
+dependency** raises `ServiceNotRegisteredError`. Errors constructing a
+registered service still propagate from either lookup method.
 
-Keys are part of the registration identity. A keyed registration is not returned
-when resolving the same service type without that key.
+Multiple registrations are retained. Singleton and scoped caches belong to
+individual registrations, not just to the requested type; registering the same
+class twice creates two independently cached registrations.
 
-Use `Annotated` with `InjectKey` to select a keyed registration during automatic
-constructor or function injection:
+## Lifetimes and scopes
 
-```python
-from typing import Annotated
+| Lifetime | Reuse | Typical use | Cleanup owner |
+| --- | --- | --- | --- |
+| Transient | New construction per lookup | Lightweight operations | Caller |
+| Scoped | Once per registration per scope | Request or unit-of-work state | Scope |
+| Singleton | Once per registration per provider | Shared application services | Provider |
+| Instance | The supplied object | Configuration, external resources | Caller |
 
-from pydico import InjectKey, inject
+A factory can deliberately return an existing object; the container cannot make
+that object new or isolate it across scopes.
 
-
-class ReportService:
-    def __init__(
-        self,
-        logger: Annotated[Logger, InjectKey("file")],
-    ) -> None:
-        self.logger = logger
-
-
-@inject
-def write_report(
-    logger: Annotated[Logger, InjectKey("console")],
-) -> None:
-    ...
-```
-
-Exactly one `InjectKey` may appear on a parameter. Other `Annotated` metadata is
-ignored so annotations can be shared with other libraries.
-
-## Collection Injection
-
-Automatic injection can resolve all registrations of a service into standard
-collection annotations:
+Create a scope for each request, job, or unit of work:
 
 ```python
-from collections.abc import Iterable, Sequence
-from typing import Annotated
-
-from pydico import InjectKey
+from pydico import ServiceCollection
 
 
-class Dispatcher:
-    def __init__(
-        self,
-        handlers: list[Handler],
-        keyed: Annotated[tuple[Handler, ...], InjectKey("commands")],
-    ) -> None:
-        self.handlers = handlers
-        self.keyed = keyed
-```
-
-Supported forms are `list[T]`, `tuple[T, ...]`, `set[T]`, `frozenset[T]`,
-`Sequence[T]`, and `Iterable[T]`. `Sequence` and `Iterable` are eagerly
-materialized as tuples. An empty matching registration set produces an empty
-collection rather than an error.
-
-Lists and tuples preserve registration order and duplicates. Sets use normal
-Python equality and hashing semantics, so they do not preserve order and may
-combine equal services. A non-hashable service requested through `set` or
-`frozenset` raises `CollectionMaterializationError`.
-
-## Lifetimes
-
-Transient services create a new object for each resolution:
-
-```python
-collection = ServiceCollection().add_transient(ReportService)
-provider = collection.build_service_provider()
-
-assert provider.get_service(ReportService) is not provider.get_service(ReportService)
-```
-
-Singleton services are created lazily once per provider and then reused:
-
-```python
-collection = ServiceCollection().add_singleton(Logger)
-provider = collection.build_service_provider()
-
-assert provider.get_service(Logger) is provider.get_service(Logger)
-```
-
-Prebuilt instances are always returned as-is.
-
-Scoped services are created once per registration within each scope. Different
-scopes have independent instances; singletons are shared with the root provider.
-
-```python
-class DbContext:
+class Session:
     pass
 
-provider = ServiceCollection().add_scoped(DbContext).build_service_provider()
-with provider.create_scope() as first:
-    db = first.get_service(DbContext)
-    assert db is first.get_service(DbContext)
-    with provider.create_scope() as second:
-        assert db is not second.get_service(DbContext)
+
+services = ServiceCollection().add_scoped(Session)
+
+with services.build_service_provider() as provider:
+    with provider.create_scope() as first:
+        session = first.get_service(Session)
+        assert session is not None
+        assert first.get_service(Session) is session
+
+        with provider.create_scope() as second:
+            assert second.get_service(Session) is not session
+
+        assert first.get_service(Session) is session
 ```
 
-Resolving a scoped service from the root raises `ScopeRequiredError`. This is
-always enforced, without a validation option. Transient dependencies inherit the
-current resolution context. Singletons are always constructed in the root
-context, even when first requested from a scope. This root binding also applies
-to ambient `@inject` calls made during singleton construction, so a singleton
-cannot capture a scoped dependency.
+Scopes have independent caches, including when their context-manager blocks are
+nested. They share their provider's singletons. Entering an inner scope restores
+the outer injection context on exit.
 
-Factories accept `ServiceResolver`, which can be imported directly from
-`pydico`. Constructor injection and unkeyed `get_service()` provide these
-built-in services:
+A root lookup of a scoped service raises `ScopeRequiredError`. This also applies
+when a root-resolved transient needs a scoped dependency. Resolve that transient
+through a scope instead.
 
-| Requested type | Root resolution | Scope resolution |
+Singleton construction always uses the root context, even when the first lookup
+comes from a scope. Its automatically resolved dependencies therefore cannot be
+scoped. A transient captured by a singleton is retained by that singleton; its
+transient registration does not shorten the lifetime of that reference.
+
+Keep the provider alive until all scopes have finished. **Closing a provider
+does not close its scopes.** Close each scope before closing the provider.
+
+### Injecting the resolver itself
+
+These unkeyed types are supplied automatically without registration:
+
+| Requested type | Through the provider | Through a scope |
 | --- | --- | --- |
 | `ServiceResolver` | Root provider | Current scope |
 | `ServiceProvider` | Root provider | Root provider |
-| `ServiceScope` | Not registered (`None`) | Current scope |
+| `ServiceScope` | No built-in instance | Current scope |
 
-Use `ServiceResolver` for dependencies that need the current resolution context.
-Built-in services are not added as descriptors: `get_services()` enumerates only
-explicit registrations. Public types such as `ServiceScope` can be imported
-directly from `pydico`.
+Use `ServiceResolver` when a service genuinely needs further lookups in its
+current context. A `ServiceProvider` always refers to the root; it does not
+become scope-aware when injected into a scoped service.
 
-Exiting the context manager calls `close()`, including when an exception occurs.
-Closing is idempotent, clears the scope cache and rejects subsequent resolutions
-with `ScopeClosedError`. Container-created scoped services implementing
-`SupportsClose` are closed automatically in reverse creation order.
+These built-ins are not descriptors and are not automatically included in
+`get_services()`. Avoid registering replacements for their unkeyed types.
 
-## Resource Lifecycle
+## Function injection
 
-`SupportsClose` is a runtime-checkable structural protocol:
+Use `@inject` or the equivalent `@inject()` to fill missing required function
+arguments from the active scope:
 
 ```python
-from pydico import SupportsClose
+from pydico import ServiceCollection, inject
 
 
-class Database:
-    def close(self) -> None:
-        ...
+class Session:
+    pass
 
-
-assert isinstance(Database(), SupportsClose)
-```
-
-Services do not need to inherit from a pydico base class. Ownership follows the
-registration lifetime:
-
-| Registration | Owner | Automatic close |
-| --- | --- | --- |
-| container-created scoped service | Scope | Yes |
-| scoped factory result | Scope | Yes |
-| container-created singleton | Provider | Yes |
-| singleton factory result | Provider | Yes |
-| transient service | Caller | No |
-| `add_instance()` value | Caller | No |
-
-Use the provider as a context manager when it owns singleton resources:
-
-```python
-services = ServiceCollection().add_singleton(HttpClient)
-
-with services.build_service_provider() as provider:
-    client = provider.get_service(HttpClient)
-
-# The container-created HttpClient is closed here.
-```
-
-Scopes and providers close owned services in reverse creation order. Closing is
-idempotent. If multiple service `close()` calls fail, pydico still attempts all
-remaining services and raises one `DisposalError` containing the original
-exceptions in its `errors` tuple. A closed provider rejects new resolution and
-scope creation with `ProviderClosedError`.
-
-Closing a provider or scope from inside one of its active resolutions raises
-`CloseDuringResolutionError`. Reentrant provider closing from an owned service's
-`close()` method is treated as part of the already running close operation.
-
-## Function Injection
-
-Entering a service scope automatically activates it for `@inject`. Decorated
-functions therefore do not need to receive or locate a provider themselves.
-
-```python
-from pydico import inject
 
 @inject
-def create_report(db: DbContext):
-    return db
+def handle(session: Session, label: str = "default") -> Session:
+    return session
 
-with provider.create_scope() as scope:
-    db = create_report()
-    assert db is scope.get_service(DbContext)
+
+with ServiceCollection().add_scoped(Session).build_service_provider() as provider:
+    with provider.create_scope() as scope:
+        assert handle() is scope.get_service(Session)
+        assert handle(label="custom") is scope.get_service(Session)
+
+    explicit = Session()
+    assert handle(explicit) is explicit
 ```
 
-`@inject()` is equivalent to `@inject`. Calling a decorated function without
-an active scope raises `InjectionError`. Creating a scope object alone does not
-activate it; activation begins when its `with` block is entered.
+Only omitted required arguments are injected. Explicit values, including
+`None`, win; parameters with defaults keep their defaults even if their type is
+registered. If every required argument is supplied, no active scope is needed.
 
-An explicitly bound `@inject(provider)` or `@inject(scope)` remains available
-for specialized cases and takes precedence over the active scope. A root-bound
-function still cannot resolve scoped services.
+Calling a function that needs injection outside an active scope raises
+`NoActiveScopeError`. Creating a scope without entering it does not activate
+it. Entering a provider context also does not activate it for ambient injection.
 
-Only missing required parameters are injected. Explicit arguments (including
-`None`) and defaults are preserved. Plain class annotations use unkeyed
-registrations; `Annotated[T, InjectKey(key)]` selects a keyed registration.
-The standard collection annotations documented above resolve all matching
-registrations. Unions, nested collections, heterogeneous tuples, and other
-generic aliases are not supported. `self`, `cls`, `*args` and `**kwargs` are
-never injected. Use `@classmethod` outside `@inject`.
-Unresolvable local forward references must be replaced with concrete annotations
-or types available in the function's module.
+For explicit binding, use `@inject(provider)` or `@inject(scope)`. The bound
+resolver takes precedence over the ambient scope. A root-bound function cannot
+resolve scoped dependencies.
 
-Missing resolvers and invalid annotations raise `InjectionError`; a missing
-single registration raises `ServiceNotRegisteredError`. Factory and function
-errors propagate.
-Normal and async functions are supported; generators are rejected. Async
-injection happens when the coroutine executes, not when it is created.
-Runtime signatures and metadata are preserved; static typing preserves the
-return type but cannot express which arguments may be omitted for injection.
+Async functions are supported. Their arguments are resolved when the coroutine
+executes, and resolution itself remains synchronous. Generator and async
+generator functions are unsupported.
 
-Nested scope blocks restore the outer scope even when the inner block raises an
-exception. Resolver contexts are isolated between threads and async tasks. Child
-async tasks inherit their creator's active scope and must finish before it
-closes. New threads do not inherit the caller's scope; each worker should enter
-its own scope.
+Instance methods work with `@inject`; place `@classmethod` outside `@inject`
+for class methods. `self`, `cls`, `*args`, and `**kwargs` are never injected.
 
-## Thread Safety
+## Annotation rules
 
-`ServiceCollection` protects registration writes and provider snapshot creation
-with a short lock. A provider therefore sees a stable tuple of descriptors, even
-if the collection is modified later.
+Constructor and function injection share the same rules for parameters that
+actually require injection:
 
-`ServiceProvider` protects singleton cache access with a provider-local
-reentrant lock. Concurrent resolutions of the same singleton create exactly one
-instance, and singleton factories may resolve other singleton services from the
-same provider.
+| Annotation | Behavior |
+| --- | --- |
+| A class or ABC, such as `Repository` | Resolve that exact registered service type |
+| `Annotated[T, InjectKey(key)]` | Resolve a keyed service |
+| A supported collection of `T` | Resolve all matching registrations |
+| Missing annotation | `MissingTypeAnnotationError` |
+| `Any`, `T \| None`, `Optional[T]`, or another union | `UnsupportedTypeAnnotationError` |
+| Unsupported generic, such as `dict[str, T]` | `UnsupportedTypeAnnotationError` |
 
-Transient services resolved from the root are not serialized and may be
-constructed in parallel. Separate providers have separate singleton caches and
-locks. Each scope uses its own reentrant lock to serialize resolutions and
-closing, ensuring exactly one successful creation per scoped registration.
-Different scopes can resolve concurrently. Closing waits for running resolutions;
-factories must not wait for another thread to resolve through the same scope.
+There is no optional-injection mode. To use an application-owned default,
+declare a default value; the container then leaves that parameter alone.
 
-The provider does not make returned service objects thread-safe. If a service is
-mutable and shared as a singleton, that service must protect its own state.
+String annotations and postponed annotations are resolved using the callable's
+module and, for constructors, the class namespace. Locally defined types that
+are no longer available in those namespaces cannot be resolved by name. Prefer
+module-level service classes when using postponed annotations.
 
-## Circular Dependencies
+## Keyed services
 
-Resolution uses a thread-local stack. Cycles through constructors or factories
-raise `CircularDependencyError` and include the detected descriptor chain:
+Keys separate registrations of the same type. Keys must be hashable; `None`
+means an unkeyed registration. There is no fallback between keyed and unkeyed
+registrations.
 
 ```python
-from pydico import CircularDependencyError
+from typing import Annotated
+
+from pydico import InjectKey, ServiceCollection, inject
+
+
+class Channel:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+@inject
+def notify(channel: Annotated[Channel, InjectKey("email")]) -> str:
+    return channel.name
+
+
+services = (
+    ServiceCollection()
+    .add_instance(Channel, Channel("email"), key="email")
+    .add_instance(Channel, Channel("sms"), key="sms")
+)
+
+with services.build_service_provider() as provider:
+    assert provider.get_service(Channel) is None
+    channel = provider.get_service(Channel, key="sms")
+    assert channel is not None and channel.name == "sms"
+    with provider.create_scope():
+        assert notify() == "email"
+```
+
+The same `Annotated` syntax works in constructors. One parameter may contain
+at most one `InjectKey`; duplicate keys also raise `ConflictingInjectKeyError`.
+Other `Annotated` metadata is ignored. `InjectKey(None)` is invalid.
+
+## Collections
+
+Collection injection uses the same registrations and lifetimes as
+`get_services()`:
+
+| Annotation | Injected value |
+| --- | --- |
+| `list[T]` | List |
+| `tuple[T, ...]` | Tuple |
+| `set[T]` | Set |
+| `frozenset[T]` | Frozen set |
+| `collections.abc.Sequence[T]` | Tuple |
+| `collections.abc.Iterable[T]` | Tuple, eagerly resolved |
+
+```python
+from typing import Annotated
+
+from pydico import InjectKey, ServiceCollection, inject
+
+
+class Handler:
+    pass
+
+
+class AuditHandler(Handler):
+    pass
+
+
+class EmailHandler(Handler):
+    pass
+
+
+@inject
+def handlers(
+    items: Annotated[list[Handler], InjectKey("events")],
+) -> list[Handler]:
+    return items
+
+
+services = (
+    ServiceCollection()
+    .add_singleton(Handler, AuditHandler, key="events")
+    .add_singleton(Handler, EmailHandler, key="events")
+)
+
+with services.build_service_provider() as provider:
+    with provider.create_scope():
+        assert [type(item) for item in handlers()] == [AuditHandler, EmailHandler]
+```
+
+Place `InjectKey` on the outer collection annotation, as above.
+`list[Annotated[T, InjectKey(...)]]` is unsupported.
+
+No matching registrations means an empty collection. Lists and tuples preserve
+registration order and duplicates. Sets follow Python equality and hashing,
+may merge equal objects, and provide no registration-order guarantee.
+Unhashable results raise `CollectionMaterializationError`.
+
+Nested collections, fixed-length tuples such as `tuple[T, T]`, and arbitrary
+collection classes are not supported as multi-service annotations. Use the
+parameterized forms above; a bare `list` is an ordinary service type lookup,
+not a request for all services.
+
+## Resource cleanup
+
+Container-created scoped services and scoped factory results belong to their
+scope. Container-created singletons and singleton factory results belong to
+their provider. Only instantiated resources are tracked.
+
+Transient instances and values registered with `add_instance()` remain
+caller-owned and are never automatically closed. If a singleton retains a
+disposable transient, your application or the singleton must manage its cleanup.
+
+Resources participate by implementing either structural protocol:
+
+- `SupportsClose`: `def close(self) -> None`
+- `SupportsAsyncClose`: `async def aclose(self) -> None`
+
+No inheritance or decorator is required. Merely implementing `__exit__` or
+`__aexit__` is not sufficient; the container calls the close methods, and does
+not enter service context managers.
+
+### Choosing synchronous or asynchronous cleanup
+
+| Resource methods | `with` / `close()` | `async with` / `await aclose()` |
+| --- | --- | --- |
+| Only `close()` | Calls `close()` | Calls `close()` |
+| Only `aclose()` | Raises `AsyncDisposalRequiredError` | Awaits `aclose()` |
+| Both | Calls `close()` | Awaits `aclose()` |
+| Neither | No cleanup hook | No cleanup hook |
+
+Async cleanup uses `asyncio`. This is a complete example:
+
+```python
+import asyncio
+
+from pydico import ServiceCollection
+
+
+class Connection:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aclose(self) -> None:
+        await asyncio.sleep(0)
+        self.closed = True
+
+
+async def main() -> None:
+    services = ServiceCollection().add_scoped(Connection)
+    async with services.build_service_provider() as provider:
+        async with provider.create_scope() as scope:
+            connection = scope.get_service(Connection)
+            assert connection is not None
+            assert not connection.closed
+        assert connection.closed
+
+
+asyncio.run(main())
+```
+
+`get_service()` and `get_services()` remain synchronous, including inside
+`async with`. Async factories and async initialization are not supported.
+For externally initialized async resources, use `add_instance()` and retain
+responsibility for their cleanup.
+
+Use one event loop for the lifetime of resources that are tied to a loop.
+In an already-running async application, await cleanup in that loop.
+
+### Cleanup guarantees and boundaries
+
+Each owner closes resources in reverse creation order, once per object identity
+within that owner. Distinct owners do not coordinate ownership: do not return
+the same disposable object from factories belonging to different scopes.
+
+Repeated closing is idempotent. After cleanup, further resolution fails with
+`ScopeClosedError` or `ProviderClosedError`. Context-manager exit closes the
+owner even when the body raises an exception.
+
+Before synchronous disposal starts, the owner checks for async-only resources.
+If it finds any, it raises `AsyncDisposalRequiredError` without disposing
+anything or clearing the cache. You can then finish with `await owner.aclose()`.
+Such resources are never silently skipped.
+
+Ordinary exceptions from cleanup hooks are collected in `DisposalError.errors`;
+remaining resources are still attempted and the owner ends closed. A subsequent
+close does not retry failed hooks. A cleanup error can become the exception
+propagated from context-manager exit when the body also failed.
+
+Concurrent `aclose()` calls coordinate so resources are not disposed twice.
+Cancellation of a caller awaiting `aclose()` is deferred until its cleanup has
+finished. This does not guarantee completion if the event loop is stopped or a
+cleanup hook itself raises `CancelledError` or another `BaseException`.
+
+Synchronous hooks called by `aclose()` run on the event-loop thread; keep them
+short. Cleanup hooks should release their own resources rather than resolve
+new services from their closing owner.
+
+## Build-time validation
+
+Use `build_service_provider(validate=True)` to check statically visible
+constructor dependencies before use:
+
+```python
+from pydico import ServiceCollection, ServiceProviderValidationError
+
+
+class Missing:
+    pass
+
+
+class Consumer:
+    def __init__(self, dependency: Missing) -> None:
+        self.dependency = dependency
 
 
 try:
-    provider.get_service(ReportService)
-except CircularDependencyError as error:
-    print(error.chain)
-```
-
-The stack is local to each thread, so parallel resolutions of the same transient
-registration do not look like false cycles.
-
-## Build-Time Diagnostics
-
-Pass `validate=True` when building a provider to inspect every statically
-visible constructor graph before resolution begins:
-
-```python
-from pydico import ServiceProviderValidationError
-
-
-try:
-    provider = services.build_service_provider(validate=True)
+    ServiceCollection().add_transient(Consumer).build_service_provider(validate=True)
 except ServiceProviderValidationError as error:
     for issue in error.issues:
         print(" -> ".join(map(str, issue.path)))
         print(issue.error)
 ```
 
-Validation reports missing registrations, annotation errors, keyed dependency
-errors, and circular constructor graphs together. It never creates services,
-executes factories, or fills provider caches. Factory bodies and standalone
-`@inject` functions are not statically visible and remain runtime-validated.
-Scope boundaries also remain runtime rules; build-time diagnostics do not add a
-separate `ValidateScopes` mode.
+Validation reports missing registrations, invalid annotations, and constructor
+cycles together. `issues` contains `ValidationIssue` objects with an `error`
+and a `path` of `ServiceIdentifier` values (service type and key).
 
-## Error Handling
+It does not construct services, execute factories, populate caches, inspect
+standalone decorated functions, or validate scoped lifetime capture.
+Scope rules still apply during resolution regardless of the validation option.
 
-All errors raised by the dependency-injection system derive from `PydicoError`.
-Invalid registrations derive from `RegistrationError`; failures while resolving
-or injecting services derive from `ResolutionError`.
+Runtime cycle detection also covers recursive factory lookups and raises
+`CircularDependencyError`; its `chain` describes the cycle.
 
-Common concrete errors include:
+## Errors
 
-- `ConflictingRegistrationError` for multiple construction strategies;
-- `ImplementationTypeMismatchError` and `InstanceTypeMismatchError` for
-  incompatible registrations;
-- `AbstractTypeRegistrationError` when an abstract type would be instantiated;
-- `ScopeRequiredError` and `ScopeClosedError` for invalid scope usage;
-- `ProviderClosedError` when a closed provider is used;
-- `DisposalError` when owned services fail to close;
-- `ServiceNotRegisteredError` when a required injected service is missing;
-- `NoActiveScopeError` when `@inject` is called outside an active scope;
-- `MissingTypeAnnotationError` and `UnsupportedTypeAnnotationError` for
-  parameters that cannot be injected;
-- `CircularDependencyError` for constructor or factory cycles;
-- `CloseDuringResolutionError` when a provider or scope is closed from one of
-  its active resolutions;
-- `ServiceProviderValidationError` for aggregated optional build diagnostics.
+Structured container errors derive from `PydicoError`. Registration failures
+derive from `RegistrationError`; resolution failures derive from
+`ResolutionError`, with injection failures under `InjectionError`.
 
-The exceptions expose structured attributes such as `service_type`, `key`,
-`target`, `parameter_name`, or `chain`. `get_service()` still returns
-`None` when an optional lookup has no registration. Exceptions raised inside
-user factories, constructors, and decorated function bodies propagate unchanged.
+| Error | Meaning / action |
+| --- | --- |
+| `ConflictingRegistrationError` | Choose one construction strategy |
+| `ImplementationTypeMismatchError` | Implementation must inherit from service type |
+| `InstanceTypeMismatchError` | Supplied instance must match service type |
+| `AbstractTypeRegistrationError` | Provide a concrete implementation or factory |
+| `ServiceNotRegisteredError` | Register the required type and matching key |
+| `NoActiveScopeError` | Enter a scope or explicitly bind the decorator |
+| `MissingTypeAnnotationError` | Annotate the required dependency |
+| `UnsupportedTypeAnnotationError` | Use a supported, unambiguous annotation |
+| `ConflictingInjectKeyError` | Use only one key annotation per parameter |
+| `CollectionMaterializationError` | Check collection requirements, such as hashability |
+| `ScopeRequiredError` | Resolve scoped dependencies through a scope |
+| `ScopeClosedError` / `ProviderClosedError` | The owner is closing or closed |
+| `CircularDependencyError` | Remove the dependency cycle shown in `chain` |
+| `CloseDuringResolutionError` | Do not close an owner from its active resolution |
+| `AsyncDisposalRequiredError` | Use async cleanup; `resources` identifies async-only objects |
+| `DisposalError` | Inspect the original exceptions in `errors` |
+| `ServiceProviderValidationError` | Inspect each build-time `issue` |
 
-Constructor injection and `@inject` use the same strict annotation rules. Every
-automatically injected parameter must name exactly one concrete registered type.
-Missing annotations and unions (including `T | None`) are rejected. Supported
-collection annotations resolve all matching services. Parameters with defaults
-and explicitly supplied function arguments are left untouched, including their
-annotations.
+Errors expose relevant fields such as `service_type`, `key`, `target`, and
+`parameter_name`. Unresolvable annotation names raise `InjectionError` with
+the original exception as the cause.
 
-## Current Limits
+Exceptions from user constructors, factories, and function bodies are not
+wrapped. Invalid Python arguments and invalid metadata can raise ordinary
+`TypeError` or `ValueError`; not every possible failure is a `PydicoError`.
 
-This version intentionally keeps the surface small:
+## Concurrency
 
-- no async disposal hooks yet;
-- constructor auto-wiring only uses registered dependency types;
-- factories receive the current `ServiceResolver`.
+Registration writes and provider snapshots are synchronized. Singleton creation
+is serialized per provider; resolutions within a scope are serialized per scope.
+Root transient construction and work in separate scopes can run concurrently.
 
-These limits are design space for the next iteration, not permanent constraints.
+Container synchronization does not make service instances thread-safe.
+Singletons must protect their own shared mutable state. Avoid factories that
+wait for another thread to resolve through the same scope or create a singleton
+through the same provider: the waiting factory may hold the lock it needs.
 
-## Development Checks
+Injection context is local to the current context. Nested scopes restore the
+previous resolver. Async child tasks inherit their creator's active scope;
+finish those tasks before exiting it. Ordinary new threads need their own
+scope; context-copying helpers can inherit a scope and therefore share it.
 
-The current behavior is protected by the test suite and static type checking:
+Enter and exit a scope in the same task/context. A scope cannot be entered twice
+at the same time. For concurrent independent requests, create separate scopes.
+
+Shutdown waits for active resolution operations, not for arbitrary application
+code using objects returned earlier. Stop that work first, close scopes, then
+close the provider. Await async shutdown before stopping the event loop.
+
+## Public API and typing
+
+Import supported symbols from `pydico`. The public exports are defined by
+`pydico.__all__`; modules beginning with `_` are implementation details.
+
+The main API consists of `ServiceCollection`, `ServiceProvider`,
+`ServiceScope`, `ServiceResolver`, `inject`, `InjectKey`,
+`SupportsClose`, `SupportsAsyncClose`, and the errors listed above.
+`ServiceLifetime`, immutable `ServiceDescriptor[T]`, `ServiceIdentifier`,
+and `ValidationIssue` are also public. Prefer `ServiceCollection` for normal
+registration because it performs registration validation.
+
+Lookups preserve service types: `get_service(T)` returns `T | None` and
+`get_services(T)` returns `tuple[T, ...]`. Factory return types may be
+subtypes. `ServiceDescriptor` is covariant.
+
+Type checkers can infer a common base such as `object` for unrelated types in
+a two-class registration call. Runtime registration checks still reject an
+incompatible implementation. Structural `Protocol` service types are not a
+guaranteed registration contract; use classes or ABCs.
+
+The injection decorator preserves runtime metadata and signatures and the
+static return type. Its static callable type does not precisely express which
+arguments can be omitted for injection.
+
+## Development
+
+From a repository checkout:
 
 ```shell
+uv sync
 uv run pytest -q
 uv run pyright
+uv run black --check src tests
+uv run isort --check-only src tests
 ```
 
-Both commands must pass before a roadmap phase is considered complete.
+The tests cover registration, resolution, scopes, injection, typing, validation,
+resource ownership, and synchronous/asynchronous lifecycle behavior.

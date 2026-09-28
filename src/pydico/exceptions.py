@@ -225,3 +225,14 @@ class DisposalError(PydicoError):
             f"Failed to close {count} container-owned service"
             f"{'s' if count != 1 else ''}."
         )
+
+
+class AsyncDisposalRequiredError(PydicoError):
+    def __init__(self, resources: Sequence[object]) -> None:
+        self.resources = tuple(resources)
+        count = len(self.resources)
+        super().__init__(
+            f"Cannot close {count} async-only container-owned service"
+            f"{'s' if count != 1 else ''} synchronously. Use 'await aclose()' "
+            "or 'async with' instead."
+        )

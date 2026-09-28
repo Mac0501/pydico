@@ -4,6 +4,7 @@ import pytest
 
 from pydico import (
     AbstractTypeRegistrationError,
+    AsyncDisposalRequiredError,
     CircularDependencyError,
     CloseDuringResolutionError,
     CollectionMaterializationError,
@@ -67,6 +68,7 @@ def target(dependency: Service) -> None:
         (MissingTypeAnnotationError, InjectionError),
         (UnsupportedTypeAnnotationError, InjectionError),
         (DisposalError, PydicoError),
+        (AsyncDisposalRequiredError, PydicoError),
     ],
 )
 def test_error_hierarchy(
