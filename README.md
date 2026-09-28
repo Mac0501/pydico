@@ -10,6 +10,7 @@ The library is experimental. Its public API may change.
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Framework examples](#framework-examples)
 - [Registering services](#registering-services)
 - [Resolving services](#resolving-services)
 - [Lifetimes and scopes](#lifetimes-and-scopes)
@@ -63,13 +64,11 @@ class ReportService:
         self.logger.log("Report created")
 
 
-services = (
-    ServiceCollection()
-    .add_singleton(Logger)
-    .add_transient(ReportService)
-)
+service_collection = ServiceCollection()
+service_collection.add_singleton(Logger)
+service_collection.add_transient(ReportService)
 
-with services.build_service_provider(validate=True) as provider:
+with service_collection.build_service_provider(validate=True) as provider:
     report = provider.get_service(ReportService)
     assert report is not None
     report.create()
@@ -83,11 +82,28 @@ the provider is built.
 Constructor injection needs no decorator. Dependencies must be registered
 explicitly; an unregistered class is not automatically constructed.
 
+## Framework examples
+
+The [`examples`](examples) directory contains medium-sized integrations split
+across multiple modules:
+
+| Example | Scope boundary | Demonstrates |
+| --- | --- | --- |
+| [`fastapi_app`](examples/fastapi_app) | One scope per HTTP request | FastAPI lifespan ownership and dependencies |
+| [`discord_bot`](examples/discord_bot) | One scope per command | discord.py bot ownership and command services |
+| [`click_cli`](examples/click_cli) | One scope per CLI command | Click application state and scoped repositories |
+| [`apscheduler_app`](examples/apscheduler_app) | One scope per scheduled run | Async jobs and asynchronous resource cleanup |
+
+The framework remains the application host in every example. It owns startup,
+shutdown, routing, commands, or scheduling; pydico only builds and resolves the
+application services. Each example has its own README with installation and run
+instructions.
+
 ## Registering services
 
 Each lifetime method accepts either the service class itself, a concrete
-implementation class, or a factory. Registration methods return the collection
-so calls can be chained.
+implementation class, or a factory. Registration methods mutate the collection
+and return it, so you may either call them step by step or chain them.
 
 Signature reference (`T` is the requested service type):
 
@@ -123,9 +139,10 @@ class MemoryRepository(Repository):
         return "stored value"
 
 
-services = ServiceCollection().add_scoped(Repository, MemoryRepository)
+service_collection = ServiceCollection()
+service_collection.add_scoped(Repository, MemoryRepository)
 
-with services.build_service_provider() as provider:
+with service_collection.build_service_provider() as provider:
     with provider.create_scope() as scope:
         repository = scope.get_service(Repository)
         assert repository is not None
@@ -166,13 +183,11 @@ def create_greeter(resolver: ServiceResolver) -> Greeter:
     return Greeter(settings.prefix)
 
 
-services = (
-    ServiceCollection()
-    .add_instance(Settings, Settings(prefix="Hello"))
-    .add_transient(Greeter, factory=create_greeter)
-)
+service_collection = ServiceCollection()
+service_collection.add_instance(Settings, Settings(prefix="Hello"))
+service_collection.add_transient(Greeter, factory=create_greeter)
 
-with services.build_service_provider() as provider:
+with service_collection.build_service_provider() as provider:
     greeter = provider.get_service(Greeter)
     assert greeter is not None
     assert greeter.greet() == "Hello, world"
@@ -227,9 +242,10 @@ class Session:
     pass
 
 
-services = ServiceCollection().add_scoped(Session)
+service_collection = ServiceCollection()
+service_collection.add_scoped(Session)
 
-with services.build_service_provider() as provider:
+with service_collection.build_service_provider() as provider:
     with provider.create_scope() as first:
         session = first.get_service(Session)
         assert session is not None
@@ -292,7 +308,10 @@ def handle(session: Session, label: str = "default") -> Session:
     return session
 
 
-with ServiceCollection().add_scoped(Session).build_service_provider() as provider:
+service_collection = ServiceCollection()
+service_collection.add_scoped(Session)
+
+with service_collection.build_service_provider() as provider:
     with provider.create_scope() as scope:
         assert handle() is scope.get_service(Session)
         assert handle(label="custom") is scope.get_service(Session)
@@ -364,13 +383,11 @@ def notify(channel: Annotated[Channel, InjectKey("email")]) -> str:
     return channel.name
 
 
-services = (
-    ServiceCollection()
-    .add_instance(Channel, Channel("email"), key="email")
-    .add_instance(Channel, Channel("sms"), key="sms")
-)
+service_collection = ServiceCollection()
+service_collection.add_instance(Channel, Channel("email"), key="email")
+service_collection.add_instance(Channel, Channel("sms"), key="sms")
 
-with services.build_service_provider() as provider:
+with service_collection.build_service_provider() as provider:
     assert provider.get_service(Channel) is None
     channel = provider.get_service(Channel, key="sms")
     assert channel is not None and channel.name == "sms"
@@ -421,13 +438,11 @@ def handlers(
     return items
 
 
-services = (
-    ServiceCollection()
-    .add_singleton(Handler, AuditHandler, key="events")
-    .add_singleton(Handler, EmailHandler, key="events")
-)
+service_collection = ServiceCollection()
+service_collection.add_singleton(Handler, AuditHandler, key="events")
+service_collection.add_singleton(Handler, EmailHandler, key="events")
 
-with services.build_service_provider() as provider:
+with service_collection.build_service_provider() as provider:
     with provider.create_scope():
         assert [type(item) for item in handlers()] == [AuditHandler, EmailHandler]
 ```
@@ -491,8 +506,10 @@ class Connection:
 
 
 async def main() -> None:
-    services = ServiceCollection().add_scoped(Connection)
-    async with services.build_service_provider() as provider:
+    service_collection = ServiceCollection()
+    service_collection.add_scoped(Connection)
+
+    async with service_collection.build_service_provider() as provider:
         async with provider.create_scope() as scope:
             connection = scope.get_service(Connection)
             assert connection is not None
@@ -559,7 +576,9 @@ class Consumer:
 
 
 try:
-    ServiceCollection().add_transient(Consumer).build_service_provider(validate=True)
+    service_collection = ServiceCollection()
+    service_collection.add_transient(Consumer)
+    service_collection.build_service_provider(validate=True)
 except ServiceProviderValidationError as error:
     for issue in error.issues:
         print(" -> ".join(map(str, issue.path)))

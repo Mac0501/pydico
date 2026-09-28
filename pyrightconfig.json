@@ -3,8 +3,13 @@
   "venv": ".venv",
   "pythonVersion": "3.13",
   "typeCheckingMode": "strict",
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "examples"],
   "exclude": ["**/__pycache__", "**/.venv", "**/.uv_cache"],
+  "ignore": [
+    "examples/fastapi_app/app.py",
+    "examples/discord_bot/bot.py",
+    "examples/apscheduler_app/main.py"
+  ],
   "extraPaths": ["src"],
   "reportMissingImports": true,
   "reportUnusedImport": "warning",
