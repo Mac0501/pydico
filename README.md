@@ -6,6 +6,10 @@ asynchronous resource cleanup. There are no runtime dependencies.
 
 The library is experimental. Its public API may change.
 
+[Changelog](https://github.com/Mac0501/pydico/blob/main/CHANGELOG.md) ·
+[Contributing](https://github.com/Mac0501/pydico/blob/main/CONTRIBUTING.md) ·
+[MIT License](https://github.com/Mac0501/pydico/blob/main/LICENSE)
+
 ## Contents
 
 - [Installation](#installation)
@@ -27,16 +31,22 @@ The library is experimental. Its public API may change.
 
 ## Installation
 
-Requires Python 3.13 or newer. From a checkout of this repository:
+Requires Python 3.13 or newer. Install the latest release from PyPI:
+
+```shell
+python -m pip install pydico
+```
+
+With uv:
+
+```shell
+uv add pydico
+```
+
+To install directly from a repository checkout:
 
 ```shell
 python -m pip install .
-```
-
-For local development with the project's development dependencies:
-
-```shell
-uv sync
 ```
 
 The Python examples below are independent scripts unless identified as a
@@ -84,15 +94,15 @@ explicitly; an unregistered class is not automatically constructed.
 
 ## Framework examples
 
-The [`examples`](examples) directory contains medium-sized integrations split
-across multiple modules:
+The [`examples`](https://github.com/Mac0501/pydico/tree/main/examples)
+directory contains medium-sized integrations split across multiple modules:
 
 | Example | Scope boundary | Demonstrates |
 | --- | --- | --- |
-| [`fastapi_app`](examples/fastapi_app) | One scope per HTTP request | FastAPI lifespan ownership and dependencies |
-| [`discord_bot`](examples/discord_bot) | One scope per command | discord.py bot ownership and command services |
-| [`click_cli`](examples/click_cli) | One scope per CLI command | Click application state and scoped repositories |
-| [`apscheduler_app`](examples/apscheduler_app) | One scope per scheduled run | Async jobs and asynchronous resource cleanup |
+| [`fastapi_app`](https://github.com/Mac0501/pydico/tree/main/examples/fastapi_app) | One scope per HTTP request | FastAPI lifespan ownership and dependencies |
+| [`discord_bot`](https://github.com/Mac0501/pydico/tree/main/examples/discord_bot) | One scope per command | discord.py bot ownership and command services |
+| [`click_cli`](https://github.com/Mac0501/pydico/tree/main/examples/click_cli) | One scope per CLI command | Click application state and scoped repositories |
+| [`apscheduler_app`](https://github.com/Mac0501/pydico/tree/main/examples/apscheduler_app) | One scope per scheduled run | Async jobs and asynchronous resource cleanup |
 
 The framework remains the application host in every example. It owns startup,
 shutdown, routing, commands, or scheduling; pydico only builds and resolves the
@@ -686,9 +696,33 @@ From a repository checkout:
 uv sync
 uv run pytest -q
 uv run pyright
-uv run black --check src tests
-uv run isort --check-only src tests
+uv run black --check src tests examples
+uv run isort --check-only src tests examples
+uv build --no-sources
+uv run twine check dist/*.whl dist/*.tar.gz
 ```
 
 The tests cover registration, resolution, scopes, injection, typing, validation,
-resource ownership, and synchronous/asynchronous lifecycle behavior.
+resource ownership, synchronous/asynchronous lifecycle behavior, and the
+documented framework examples. See the
+[contribution guide](https://github.com/Mac0501/pydico/blob/main/CONTRIBUTING.md)
+before submitting a change.
+
+## Releases
+
+GitLab CI validates merge requests, derives versions from Conventional
+Commits, publishes packages to the GitLab Package Registry, and creates the
+GitLab release. Public PyPI publishing and GitHub mirroring are prepared in the
+pipeline but currently disabled. Use subjects such as `feat(scope): add
+cleanup`, `fix(injection): reject ambiguity`, or `docs: improve examples`.
+
+Configure this masked CI/CD variable in GitLab:
+
+- `RELEASE_TOKEN`: GitLab project token with `write_repository`.
+
+`PYPI_TOKEN` and `GITHUB_TOKEN` are not required while their corresponding
+pipeline jobs remain disabled.
+
+To make successful pipelines mandatory, enable **Pipelines must succeed** under
+**Settings > Merge requests > Merge checks**. Do not edit versions, changelog
+release sections, or release tags manually.
