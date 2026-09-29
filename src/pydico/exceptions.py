@@ -1,112 +1,238 @@
-from pydico.types import Key
+from collections.abc import Hashable, Sequence
+
+from pydico.identifiers import ServiceIdentifier
 
 
-class ContainerError(Exception):
-    pass
+def _name(value: object) -> str:
+    return getattr(value, "__qualname__", repr(value))
 
 
-class RegistrationError(ContainerError):
-    def __init__(self, message: str):
-        super().__init__(message)
+class PydicoError(Exception):
+    """Base class for errors raised by pydico itself."""
 
 
-class ImplementationMismatchError(RegistrationError):
-    interface_type: type
-    dependency_type: type
+class RegistrationError(PydicoError):
+    """A service registration is invalid."""
 
-    def __init__(self, interface_type: type, dependency_type: type):
-        self.interface_type = interface_type
-        self.dependency_type = dependency_type
-        message = (
-            f"Implementation {dependency_type.__name__} must be a subclass "
-            f"of interface {interface_type.__name__}."
+
+class ConflictingRegistrationError(RegistrationError):
+    def __init__(self, service_type: type[object], strategies: Sequence[str]) -> None:
+        self.service_type = service_type
+        self.strategies = tuple(strategies)
+        joined = ", ".join(self.strategies)
+        super().__init__(
+            f"{service_type.__qualname__} has multiple construction strategies: "
+            f"{joined}. Only one strategy may be specified."
         )
-        super().__init__(message)
 
 
-class AbstractDependencyError(RegistrationError):
-    dependency_type: type
-
-    def __init__(self, dependency_type: type):
-        self.dependency_type = dependency_type
-        message = (
-            f"Cannot register abstract class {dependency_type.__name__} as a dependency. "
-            f"An abstract class cannot be instantiated directly."
+class ImplementationTypeMismatchError(RegistrationError):
+    def __init__(
+        self,
+        service_type: type[object],
+        implementation_type: type[object],
+    ) -> None:
+        self.service_type = service_type
+        self.implementation_type = implementation_type
+        super().__init__(
+            f"{implementation_type.__qualname__} cannot be registered as an "
+            f"implementation of {service_type.__qualname__}."
         )
+
+
+class AbstractTypeRegistrationError(RegistrationError):
+    def __init__(
+        self,
+        service_type: type[object],
+        implementation_type: type[object] | None = None,
+    ) -> None:
+        self.service_type = service_type
+        self.implementation_type = implementation_type
+        if implementation_type is None:
+            message = (
+                f"Abstract service {service_type.__qualname__} requires a concrete "
+                "implementation, factory, or instance."
+            )
+        else:
+            message = (
+                f"Implementation {implementation_type.__qualname__} for service "
+                f"{service_type.__qualname__} is abstract and cannot be instantiated."
+            )
         super().__init__(message)
 
 
-class InstanceTypeError(RegistrationError):
-    interface_type: type
-    instance_object: object
-
-    def __init__(self, interface_type: type, instance_object: object):
-        self.interface_type = interface_type
-        self.instance_object = instance_object
-        dependency_type = type(self.instance_object)
-
-        message = (
-            f"Object {instance_object!r} is of type {dependency_type.__name__} "
-            f"but is not an instance of the required type {interface_type.__name__}."
+class InstanceTypeMismatchError(RegistrationError):
+    def __init__(
+        self,
+        service_type: type[object],
+        instance_type: type[object],
+    ) -> None:
+        self.service_type = service_type
+        self.instance_type = instance_type
+        super().__init__(
+            f"Instance of {instance_type.__qualname__} cannot be registered for "
+            f"service {service_type.__qualname__}."
         )
-        super().__init__(message)
 
 
-class ResolutionError(ContainerError):
-    def __init__(self, message: str):
-        super().__init__(message)
+class ResolutionError(PydicoError):
+    """A service could not be resolved by pydico."""
 
 
-class MissingTypeHintError(ResolutionError):
-    dependency_type: type
-    parameter_name: str
-
-    def __init__(self, dependency_type: type, parameter_name: str):
-        self.dependency_type = dependency_type
-        self.parameter_name = parameter_name
-        message = (
-            f"Parameter '{parameter_name}' in {dependency_type.__name__}'s constructor "
-            f"requires a type hint to be resolved by the container."
+class ProviderClosedError(ResolutionError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The service provider is closed and can no longer resolve services."
         )
-        super().__init__(message)
+
+
+class ScopeClosedError(ResolutionError):
+    def __init__(self) -> None:
+        super().__init__(
+            "The service scope is closed and can no longer resolve services."
+        )
+
+
+class CloseDuringResolutionError(PydicoError):
+    def __init__(self, resource: object) -> None:
+        self.resource = resource
+        resource_name = type(resource).__qualname__
+        super().__init__(
+            f"Cannot close {resource_name} while it is resolving services."
+        )
+
+
+class ScopeRequiredError(ResolutionError):
+    def __init__(
+        self,
+        service_type: type[object],
+        key: Hashable | None = None,
+    ) -> None:
+        self.service_type = service_type
+        self.key = key
+        identifier = ServiceIdentifier(service_type, key)
+        super().__init__(
+            f"{identifier} has a scoped lifetime and requires an active service "
+            "scope. Use provider.create_scope()."
+        )
 
 
 class CircularDependencyError(ResolutionError):
-    chain: list[type]
+    def __init__(self, chain: Sequence[ServiceIdentifier]) -> None:
+        self.chain = tuple(chain)
+        chain_text = " -> ".join(str(identifier) for identifier in self.chain)
+        super().__init__(f"Circular dependency detected: {chain_text}")
 
-    def __init__(self, chain: list[type]):
-        self.chain = chain
 
-        type_names = [f"{t.__module__}.{t.__qualname__}" for t in chain]
+class ServiceNotRegisteredError(ResolutionError):
+    def __init__(
+        self,
+        service_type: type[object],
+        *,
+        key: Hashable | None = None,
+        target: object | None = None,
+        parameter_name: str | None = None,
+    ) -> None:
+        self.service_type = service_type
+        self.key = key
+        self.target = target
+        self.parameter_name = parameter_name
+        identifier = ServiceIdentifier(service_type, key)
+        message = f"No registration was found for {identifier}"
+        if target is not None and parameter_name is not None:
+            message += f" required by {_name(target)}.{parameter_name}"
+        super().__init__(message + ".")
 
-        cycle = type_names
-        first = type_names[0]
-        if first in type_names[1:]:
-            idx = type_names[1:].index(first) + 1
-            cycle = type_names[: idx + 1]
 
-        chain_str = " -> ".join(cycle)
+class InjectionError(ResolutionError):
+    """Automatic constructor or function injection failed."""
 
-        message = (
-            "Circular dependency detected while resolving dependencies:\n"
-            f"    {chain_str}\n"
-            "The classes above depend on each other in a cycle. "
-            "Check their __init__ signatures and dependency registrations."
+
+class NoActiveScopeError(InjectionError):
+    def __init__(self, target: object) -> None:
+        self.target = target
+        super().__init__(
+            f"Cannot inject dependencies into {_name(target)} because no service "
+            "scope is active. Use 'with provider.create_scope():' around the "
+            "operation."
         )
 
-        super().__init__(message)
+
+class MissingTypeAnnotationError(InjectionError):
+    def __init__(self, target: object, parameter_name: str) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        super().__init__(
+            f"Parameter {parameter_name!r} of {_name(target)} requires a type "
+            "annotation."
+        )
 
 
-class UnregisteredDependencyError(ResolutionError):
-    key: Key
+class UnsupportedTypeAnnotationError(InjectionError):
+    def __init__(
+        self,
+        target: object,
+        parameter_name: str,
+        annotation: object,
+    ) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        self.annotation = annotation
+        super().__init__(
+            f"Parameter {parameter_name!r} of {_name(target)} uses unsupported "
+            f"annotation {annotation!r}."
+        )
 
-    def __init__(self, key: Key):
-        self.key = key
 
-        if isinstance(key, str):
-            key_repr = key
-        else:
-            key_repr = key.__name__
+class ConflictingInjectKeyError(InjectionError):
+    def __init__(
+        self,
+        target: object,
+        parameter_name: str,
+        keys: Sequence[Hashable],
+    ) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        self.keys = tuple(keys)
+        super().__init__(
+            f"Parameter {parameter_name!r} of {_name(target)} has multiple "
+            f"InjectKey metadata values: {self.keys!r}. Exactly one is allowed."
+        )
 
-        message = f"Unregistered dependency for key {key_repr}."
-        super().__init__(message)
+
+class CollectionMaterializationError(InjectionError):
+    def __init__(
+        self,
+        target: object,
+        parameter_name: str,
+        collection_type: type[object],
+    ) -> None:
+        self.target = target
+        self.parameter_name = parameter_name
+        self.collection_type = collection_type
+        super().__init__(
+            f"Cannot materialize parameter {parameter_name!r} of {_name(target)} "
+            f"as {collection_type.__qualname__}. One or more resolved services "
+            "do not satisfy the collection requirements."
+        )
+
+
+class DisposalError(PydicoError):
+    def __init__(self, errors: Sequence[Exception]) -> None:
+        self.errors = tuple(errors)
+        count = len(self.errors)
+        super().__init__(
+            f"Failed to close {count} container-owned service"
+            f"{'s' if count != 1 else ''}."
+        )
+
+
+class AsyncDisposalRequiredError(PydicoError):
+    def __init__(self, resources: Sequence[object]) -> None:
+        self.resources = tuple(resources)
+        count = len(self.resources)
+        super().__init__(
+            f"Cannot close {count} async-only container-owned service"
+            f"{'s' if count != 1 else ''} synchronously. Use 'await aclose()' "
+            "or 'async with' instead."
+        )

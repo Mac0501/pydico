@@ -1,53 +1,21 @@
 {
   "venvPath": ".",
   "venv": ".venv",
+  "pythonVersion": "3.13",
   "typeCheckingMode": "strict",
-  "skipLibCheck": true,
+  "include": ["src", "tests", "examples"],
+  "exclude": ["**/__pycache__", "**/.venv", "**/.uv_cache"],
+  "ignore": [
+    "examples/fastapi_app/app.py",
+    "examples/discord_bot/bot.py",
+    "examples/apscheduler_app/main.py"
+  ],
+  "extraPaths": ["src"],
   "reportMissingImports": true,
   "reportUnusedImport": "warning",
+  "reportUnnecessaryTypeIgnoreComment": "error",
   "reportOptionalMemberAccess": "warning",
   "reportMissingTypeStubs": "none",
   "reportUnknownMemberType": "none",
-  "reportUnknownArgumentType": "none",
-
-  "executionEnvironments": [
-    {
-      "root": "./apps/bot/src",
-      "extraPaths": [
-        "./apps/bot/src",
-      ]
-    },
-    {
-      "root": "./apps/backend/src",
-      "extraPaths": [
-        "./apps/backend/src",
-      ]
-    },
-    {
-      "root": "./libs/ether-engine/src/ether_engine",
-      "extraPaths": [
-        "./libs/ether-engine/src/ether_engine",
-      ]
-    },
-    {
-      "root": "./libs/ether-application/src/ether_application",
-      "extraPaths": [
-        "./libs/ether-application/src/ether_application",
-      ]
-    },
-    {
-      "root": "./libs/ether-db/src/ether_db",
-      "extraPaths": [
-        "./libs/ether-db/src/ether_db",
-      ]
-    },
-    {
-      "root": "./libs/shared-types/src/shared_types",
-      "extraPaths": [
-        "./libs/shared-types/src/shared_types",
-      ]
-    }
-  ],
-
-  "exclude": ["**/__pycache__", "**/.venv", "**/.uv_cache", "./libs/clients"]
+  "reportUnknownArgumentType": "none"
 }

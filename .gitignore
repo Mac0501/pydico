@@ -4,6 +4,14 @@ resources/
 .venv/
 .pytest_cache/
 .uv_cache/
+.uv-python/
+.coverage
+coverage.xml
+htmlcov/
+reports/
+build/
+dist/
+*.egg-info/
 libs/client*
 
 # env

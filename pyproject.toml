@@ -1,13 +1,40 @@
 [project]
 name = "pydico"
 version = "0.1.0"
-description = "A lightweight, .NET-inspired dependency injection container for Python 3.13+ featuring Transient & Singleton lifetimes and type-safe injection."
+description = "A typed dependency injection container for modern Python applications."
 readme = "README.md"
 authors = [
-    { name = "Mac0501", email = "" }
+    { name = "Mac0501" }
 ]
 requires-python = ">=3.13"
 dependencies = []
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "dependency-injection",
+    "inversion-of-control",
+    "ioc",
+    "service-container",
+    "type-hints",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/Mac0501/pydico"
+Documentation = "https://github.com/Mac0501/pydico#readme"
+Repository = "https://github.com/Mac0501/pydico.git"
+Issues = "https://github.com/Mac0501/pydico/issues"
+Changelog = "https://github.com/Mac0501/pydico/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["uv_build>=0.8.3,<0.9.0"]
@@ -16,9 +43,55 @@ build-backend = "uv_build"
 [tool.uv]
 cache-dir = ".uv_cache"
 
+[tool.isort]
+profile = "black"
+skip = [".venv", ".uv_cache"]
+
 [dependency-groups]
 dev = [
     "black>=25.11.0",
     "isort>=7.0.0",
+    "pyright[nodejs]>=1.1.411",
     "pytest>=9.0.1",
+    "python-semantic-release>=10.7.0,<11",
+    "twine>=7.0.0",
 ]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+assets = ["uv.lock"]
+commit_parser = "conventional"
+commit_message = "chore(release): {version}"
+build_command = "uv lock"
+tag_format = "v{version}"
+allow_zero_version = true
+major_on_zero = false
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.changelog]
+mode = "update"
+insertion_flag = "<!-- version list -->"
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
+mask_initial_release = false
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = [
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "perf",
+    "refactor",
+    "revert",
+    "style",
+    "test",
+]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
