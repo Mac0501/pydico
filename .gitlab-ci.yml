@@ -106,7 +106,12 @@ create_version_tag:
     GIT_DEPTH: "0"
   before_script:
     - apt-get update -qq
-    - apt-get install --yes --no-install-recommends git
+    - apt-get install --yes --no-install-recommends ca-certificates git
+    - update-ca-certificates
+    - |
+      if [ -n "${CI_SERVER_TLS_CA_FILE:-}" ] && [ -f "$CI_SERVER_TLS_CA_FILE" ]; then
+        git config --global http.sslCAInfo "$CI_SERVER_TLS_CA_FILE"
+      fi
     - uv python install "$PYTHON_VERSION"
     - uv sync --python "$PYTHON_VERSION" --frozen
   script:
