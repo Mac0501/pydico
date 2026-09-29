@@ -50,9 +50,8 @@ skip = [".venv", ".uv_cache"]
 [dependency-groups]
 dev = [
     "black>=25.11.0",
-    "commitizen>=4,<5",
     "isort>=7.0.0",
-    "pyright>=1.1.411",
+    "pyright[nodejs]>=1.1.411",
     "pytest>=9.0.1",
     "python-semantic-release>=10.7.0,<11",
     "twine>=7.0.0",
@@ -96,6 +95,3 @@ allowed_tags = [
 ]
 minor_tags = ["feat"]
 patch_tags = ["fix", "perf"]
-
-[tool.commitizen]
-name = "cz_conventional_commits"

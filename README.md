@@ -710,11 +710,13 @@ before submitting a change.
 
 ## Releases
 
-GitLab CI validates merge requests, derives versions from Conventional
+GitLab CI validates the code, derives versions from recognized Conventional
 Commits, publishes packages to the GitLab Package Registry, and creates the
-GitLab release. Public PyPI publishing and GitHub mirroring are prepared in the
+GitLab release. Non-conventional commits are allowed and ignored during version
+calculation. Public PyPI publishing and GitHub mirroring are prepared in the
 pipeline but currently disabled. Use subjects such as `feat(scope): add
-cleanup`, `fix(injection): reject ambiguity`, or `docs: improve examples`.
+cleanup` or `fix(injection): reject ambiguity` when a commit should trigger a
+release.
 
 Configure this masked CI/CD variable in GitLab:
 

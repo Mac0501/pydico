@@ -43,8 +43,9 @@ Use `uv run black src tests examples` and
 
 - Keep each change focused and include tests for observable behavior.
 - Use a Conventional Commit subject such as `feat(scope): add async cleanup` or
-  `fix(injection): reject an ambiguous annotation`. Merge request titles use
-  the same format.
+  `fix(injection): reject an ambiguous annotation` when a change should affect
+  the next release version. Other commit formats are allowed, but release
+  automation ignores them.
 - Update the README when public behavior or usage changes.
 - Preserve type safety and the zero-runtime-dependency design unless a change
   explicitly revises those project goals.
