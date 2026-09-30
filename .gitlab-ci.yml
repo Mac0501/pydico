@@ -126,6 +126,7 @@ create_version_tag:
         exit 0
       fi
     - git fetch --force --tags origin
+    - git checkout -B "$CI_DEFAULT_BRANCH" "$CI_COMMIT_SHA"
     - NEW_TAG="$(uv run semantic-release version --print-tag)"
     - test -n "$NEW_TAG" || (echo "Semantic Release did not determine a version tag." >&2; exit 1)
     - |
