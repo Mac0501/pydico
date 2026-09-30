@@ -6,7 +6,6 @@ asynchronous resource cleanup. There are no runtime dependencies.
 
 The library is experimental. Its public API may change.
 
-[Changelog](https://github.com/Mac0501/pydico/blob/main/CHANGELOG.md) ·
 [Contributing](https://github.com/Mac0501/pydico/blob/main/CONTRIBUTING.md) ·
 [MIT License](https://github.com/Mac0501/pydico/blob/main/LICENSE)
 
@@ -31,7 +30,8 @@ The library is experimental. Its public API may change.
 
 ## Installation
 
-Requires Python 3.13 or newer. Install the latest release from PyPI:
+Requires Python 3.13 or newer. After public PyPI publishing is enabled, install
+the latest release with:
 
 ```shell
 python -m pip install pydico
@@ -710,21 +710,28 @@ before submitting a change.
 
 ## Releases
 
-GitLab CI validates the code, derives versions from recognized Conventional
-Commits, publishes packages to the GitLab Package Registry, and creates the
-GitLab release. Non-conventional commits are allowed and ignored during version
-calculation. Public PyPI publishing and GitHub mirroring are prepared in the
-pipeline but currently disabled. Use subjects such as `feat(scope): add
-cleanup` or `fix(injection): reject ambiguity` when a commit should trigger a
-release.
+GitLab CI validates the code and derives the next version from recognized
+Conventional Commits. A successful pipeline on `main` creates only an annotated
+version tag; it does not create a version or changelog commit. The tag starts a
+second pipeline that temporarily stamps the tag version into the package,
+builds and verifies the distributions, publishes them to the GitLab Package
+Registry, generates release notes, and creates the GitLab release. The wheel,
+source distribution, and checksums are also attached to that release.
+
+Non-conventional commits are allowed and excluded from version calculation and
+release notes. Use subjects such as `feat(scope): add cleanup` or
+`fix(injection): reject ambiguity` when a commit should trigger a release.
+Public PyPI publishing and GitHub mirroring are prepared in the pipeline but
+currently disabled.
 
 Configure this masked CI/CD variable in GitLab:
 
-- `RELEASE_TOKEN`: GitLab project token with `write_repository`.
+- `RELEASE_TOKEN`: masked GitLab project access token with `api` and
+  `write_repository` scopes and permission to create protected version tags.
 
 `PYPI_TOKEN` and `GITHUB_TOKEN` are not required while their corresponding
 pipeline jobs remain disabled.
 
 To make successful pipelines mandatory, enable **Pipelines must succeed** under
-**Settings > Merge requests > Merge checks**. Do not edit versions, changelog
-release sections, or release tags manually.
+**Settings > Merge requests > Merge checks**. Keep the placeholder version in
+`pyproject.toml` unchanged and do not create release tags manually.

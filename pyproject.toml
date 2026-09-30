@@ -1,6 +1,6 @@
 [project]
 name = "pydico"
-version = "0.1.0"
+version = "0.0.0"
 description = "A typed dependency injection container for modern Python applications."
 readme = "README.md"
 authors = [
@@ -34,7 +34,6 @@ Homepage = "https://github.com/Mac0501/pydico"
 Documentation = "https://github.com/Mac0501/pydico#readme"
 Repository = "https://github.com/Mac0501/pydico.git"
 Issues = "https://github.com/Mac0501/pydico/issues"
-Changelog = "https://github.com/Mac0501/pydico/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["uv_build>=0.8.3,<0.9.0"]
@@ -58,11 +57,7 @@ dev = [
 ]
 
 [tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
-assets = ["uv.lock"]
 commit_parser = "conventional"
-commit_message = "chore(release): {version}"
-build_command = "uv lock"
 tag_format = "v{version}"
 allow_zero_version = true
 major_on_zero = false
@@ -72,12 +67,22 @@ match = "main"
 prerelease = false
 
 [tool.semantic_release.changelog]
-mode = "update"
-insertion_flag = "<!-- version list -->"
+mode = "init"
+exclude_commit_patterns = [
+    '^(?!(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^)]+\))?!?: ).+',
+]
 
 [tool.semantic_release.changelog.default_templates]
-changelog_file = "CHANGELOG.md"
+changelog_file = "release-notes.md"
 mask_initial_release = false
+
+[tool.semantic_release.remote]
+type = "gitlab"
+token = { env = "RELEASE_TOKEN" }
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*.whl", "dist/*.tar.gz", "dist/SHA256SUMS"]
+upload_to_vcs_release = true
 
 [tool.semantic_release.commit_parser_options]
 allowed_tags = [

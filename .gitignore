@@ -9,6 +9,7 @@ resources/
 coverage.xml
 htmlcov/
 reports/
+release-notes.md
 build/
 dist/
 *.egg-info/

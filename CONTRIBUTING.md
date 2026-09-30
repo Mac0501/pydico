@@ -49,11 +49,11 @@ Use `uv run black src tests examples` and
 - Update the README when public behavior or usage changes.
 - Preserve type safety and the zero-runtime-dependency design unless a change
   explicitly revises those project goals.
-- Do not edit the project version or generated release sections in the
-  changelog. GitLab CI derives them from the commit history.
+- Do not edit the placeholder project version or create release tags. GitLab CI
+  derives released versions and release notes from the commit history.
 
 By contributing, you agree that your contribution is licensed under the MIT
 License used by this repository.
 
 Versioning and publishing are automated by GitLab CI. Normal contributions
-must not edit versions, generated changelog sections, or release tags.
+must not edit the placeholder version or create release tags.
